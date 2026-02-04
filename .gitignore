@@ -1,0 +1,46 @@
+# Ansible artifacts
+*.retry
+logs/*.log
+!logs/.gitkeep
+
+# Vault password files (NEVER commit these!)
+.vault_pass
+*vault_pass*
+*.vault
+
+# Sensitive files
+**/secrets/
+**/*.pem
+**/*.key
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.sublime-*
+
+# Fact cache
+/tmp/
+
+# Local overrides (use for testing)
+*.local.yml
+inventory/local.yml
+
+# Misc
+.claude
+CLAUDE.md

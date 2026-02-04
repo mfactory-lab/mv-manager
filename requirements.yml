@@ -1,0 +1,18 @@
+---
+# Requirements file for Ansible Galaxy roles/collections
+# Install with: ansible-galaxy install -r requirements.yml
+
+collections:
+  - name: community.general
+    version: ">=7.0.0"
+  - name: community.docker
+    version: ">=3.0.0"
+  - name: ansible.posix
+    version: ">=1.5.0"
+
+# Optional: External roles (uncomment if needed)
+# roles:
+#   - name: geerlingguy.docker
+#     version: "6.1.0"
+#   - name: geerlingguy.pip
+#     version: "2.2.0"
