@@ -1,0 +1,32 @@
+---
+- name: Register Validator
+  hosts: validators
+  become: yes
+  gather_facts: yes
+
+  vars_files:
+    - ../group_vars/vault.yml
+
+  vars:
+    register_validator: true
+
+  pre_tasks:
+    - name: Check sync
+      uri:
+        url: "http://localhost:{{ monad_rpc_port }}"
+        method: POST
+        body: '{"jsonrpc":"2.0","method":"eth_syncing","id":1}'
+        body_format: json
+        headers:
+          Content-Type: "application/json"
+      register: sync_check
+
+    - name: Fail if syncing
+      fail:
+        msg: "Node still syncing"
+      when: sync_check.json.result != false
+
+  tasks:
+    - name: Run validator role
+      include_role:
+        name: validator

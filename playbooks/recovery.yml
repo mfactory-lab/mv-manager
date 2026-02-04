@@ -1,0 +1,65 @@
+---
+- name: Recovery
+  hosts: validators
+  become: yes
+  gather_facts: yes
+
+  vars_files:
+    - ../group_vars/vault.yml
+
+  tasks:
+    - name: Check service
+      shell: systemctl status {{ service_identifier }} --no-pager
+      register: status
+      changed_when: false
+      failed_when: false
+      tags: [diagnose]
+
+    - name: Show status
+      debug:
+        var: status.stdout_lines
+      tags: [diagnose]
+
+    - name: Check errors
+      shell: journalctl -u {{ service_identifier }} -n 50 --no-pager | grep -i "error\|fatal" || true
+      register: errors
+      changed_when: false
+      tags: [diagnose]
+
+    - name: Show errors
+      debug:
+        var: errors.stdout_lines
+      tags: [diagnose]
+
+    - name: Stop service
+      systemd:
+        name: "{{ service_identifier }}"
+        state: stopped
+      tags: [recover]
+
+    - name: Start service
+      systemd:
+        name: "{{ service_identifier }}"
+        state: started
+        enabled: yes
+      tags: [recover]
+
+    - name: Wait
+      pause:
+        seconds: 30
+      tags: [recover]
+
+    - name: Check RPC
+      uri:
+        url: "http://localhost:{{ monad_rpc_port }}"
+        method: POST
+        body: '{"jsonrpc":"2.0","method":"eth_chainId","id":1}'
+        body_format: json
+        headers:
+          Content-Type: "application/json"
+        status_code: [200, 502, 503]
+      register: rpc
+      retries: 10
+      delay: 10
+      until: rpc.status == 200
+      tags: [recover]

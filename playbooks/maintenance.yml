@@ -1,0 +1,73 @@
+---
+- name: Maintenance
+  hosts: validators:fullnodes
+  become: yes
+  gather_facts: yes
+
+  vars_files:
+    - ../group_vars/vault.yml
+
+  tasks:
+    - name: Restart
+      systemd:
+        name: "{{ service_identifier }}"
+        state: restarted
+      tags: [restart, never]
+
+    - name: Backup
+      command: "{{ monad_home }}/scripts/backup.sh"
+      become_user: "{{ monad_user }}"
+      tags: [backup, never]
+
+    - name: Health check
+      command: "{{ monad_home }}/scripts/health-check.sh"
+      become_user: "{{ monad_user }}"
+      register: health
+      changed_when: false
+      failed_when: false
+      tags: [health]
+
+    - name: Show health
+      debug:
+        var: health.stdout_lines
+      tags: [health]
+
+    - name: Sync status
+      command: "{{ monad_home }}/scripts/check-sync.sh"
+      become_user: "{{ monad_user }}"
+      register: sync
+      changed_when: false
+      tags: [sync]
+
+    - name: Show sync
+      debug:
+        var: sync.stdout_lines
+      tags: [sync]
+
+    - name: Service status
+      shell: systemctl status {{ service_identifier }} --no-pager
+      register: status
+      changed_when: false
+      failed_when: false
+      tags: [status]
+
+    - name: Show status
+      debug:
+        var: status.stdout_lines
+      tags: [status]
+
+    - name: Disk usage
+      shell: df -h {{ monad_data_dir }}
+      register: disk
+      changed_when: false
+      tags: [status]
+
+    - name: Show disk
+      debug:
+        var: disk.stdout_lines
+      tags: [status]
+
+    - name: Cleanup backups
+      command: "{{ monad_home }}/scripts/cleanup-backups.sh"
+      become_user: "{{ monad_user }}"
+      tags: [cleanup, never]

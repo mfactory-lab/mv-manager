@@ -1,0 +1,46 @@
+---
+- name: Deploy Monad Validator
+  hosts: validators
+  become: yes
+  gather_facts: yes
+
+  vars_files:
+    - ../group_vars/vault.yml
+
+  pre_tasks:
+    - name: Cloud VM warning
+      debug:
+        msg: "Cloud VMs not officially supported. Use bare-metal."
+      when: ansible_virtualization_type is defined and ansible_virtualization_type != "NA"
+      tags: [always]
+
+  roles:
+    - role: common
+      tags: [common]
+
+    - role: prepare_server
+      tags: [prepare]
+
+    - role: monad-node
+      tags: [monad]
+
+    - role: validator
+      tags: [validator]
+      when: is_validator | default(true)
+
+    - role: monitoring
+      tags: [monitoring]
+      when: monitoring_enabled | default(true)
+
+    - role: backup
+      tags: [backup]
+      when: backup_enabled | default(true)
+
+  post_tasks:
+    - name: Deployment complete
+      debug:
+        msg: |
+          Deployment complete
+          RPC: http://{{ ansible_host }}:{{ monad_rpc_port }}
+          Scripts: {{ monad_home }}/scripts/
+      tags: [always]

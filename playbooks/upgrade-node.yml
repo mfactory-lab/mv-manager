@@ -1,0 +1,45 @@
+---
+- name: Upgrade Node
+  hosts: validators:fullnodes
+  become: yes
+  gather_facts: yes
+  serial: 1
+
+  vars_files:
+    - ../group_vars/vault.yml
+
+  tasks:
+    - name: Backup
+      command: "{{ monad_home }}/scripts/backup.sh"
+      become_user: "{{ monad_user }}"
+
+    - name: Stop service
+      systemd:
+        name: "{{ service_identifier }}"
+        state: stopped
+
+    - name: Download new version
+      shell: |
+        cd {{ monad_home }}
+        aria2c -x 16 {{ monad_source_url }}/{{ monad_version }}/monad-{{ monad_version }}.tar.gz
+        tar -xzf monad-{{ monad_version }}.tar.gz -C {{ monad_bin_dir }}
+      become_user: "{{ monad_user }}"
+
+    - name: Start service
+      systemd:
+        name: "{{ service_identifier }}"
+        state: started
+        enabled: yes
+
+    - name: Wait for RPC
+      uri:
+        url: "http://localhost:{{ monad_rpc_port }}"
+        method: POST
+        body: '{"jsonrpc":"2.0","method":"eth_chainId","id":1}'
+        body_format: json
+        headers:
+          Content-Type: "application/json"
+      register: rpc_check
+      until: rpc_check.status == 200
+      retries: 30
+      delay: 10
