@@ -1,0 +1,229 @@
+---
+# Monad Validator Configuration
+
+org: "myorg"
+env: testnet
+project: monad
+
+# Service identity
+service_identifier: "monad-consensus"
+monad_user: "{{ service_identifier }}"
+monad_group: "{{ project }}"
+monad_home: "/opt/{{ service_identifier }}"
+
+monad_bin_dir: "{{ monad_home }}/bin"
+monad_config_dir: "{{ monad_home }}/config"
+monad_data_dir: "{{ monad_home }}/data"
+monad_env_dir: "{{ monad_home }}/environment"
+monad_key_dir: "{{ monad_home }}/key"
+monad_socket_dir: "{{ monad_home }}/socket"
+monad_wal_dir: "{{ monad_home }}/wal"
+monad_logs_dir: "{{ monad_home }}/log"
+monad_lib_dir: "{{ monad_home }}/lib"
+monad_forkpoint_dir: "{{ monad_config_dir }}/forkpoint"
+monad_validators_dir: "{{ monad_config_dir }}/validators"
+
+monad_directories:
+  - "{{ monad_home }}"
+  - "{{ monad_bin_dir }}"
+  - "{{ monad_config_dir }}"
+  - "{{ monad_data_dir }}"
+  - "{{ monad_env_dir }}"
+  - "{{ monad_key_dir }}"
+  - "{{ monad_socket_dir }}"
+  - "{{ monad_wal_dir }}"
+  - "{{ monad_logs_dir }}"
+  - "{{ monad_lib_dir }}"
+  - "{{ monad_forkpoint_dir }}"
+  - "{{ monad_validators_dir }}"
+  - "{{ monad_data_dir }}/bodies"
+  - "{{ monad_data_dir }}/headers"
+  - "{{ monad_home }}/backups"
+  - "{{ monad_home }}/scripts"
+
+monad_log_file: "{{ monad_logs_dir }}/{{ service_identifier }}.log"
+monad_node_config_file: "{{ monad_config_dir }}/node.toml"
+monad_validators_config_file: "{{ monad_validators_dir }}/validators.toml"
+monad_forkpoint_file: "{{ monad_forkpoint_dir }}/forkpoint.toml"
+monad_persisted_peers_file: "{{ monad_config_dir }}/persisted_peers.toml"
+monad_secp_key_file: "{{ monad_key_dir }}/id-secp"
+monad_bls_key_file: "{{ monad_key_dir }}/id-bls"
+monad_general_env_file: "{{ monad_env_dir }}/general.env"
+monad_secrets_env_file: "{{ monad_env_dir }}/secrets.env"
+
+monad_mempool_socket: "{{ monad_socket_dir }}/mempool.sock"
+monad_control_panel_socket: "{{ monad_socket_dir }}/controlpanel.sock"
+monad_statesync_socket: "{{ monad_socket_dir }}/statesync.sock"
+
+# Monad release and network
+monad_version: "0.12.7"
+monad_bft_repo: "https://github.com/monad-developers/monad-bft.git"
+monad_bft_version: "main"
+monad_source_url: "https://pkg.category.xyz"
+monad_snapshot_url: "https://d1v5yevi7k4blc.cloudfront.net"
+monad_validators_config_url: "https://bucket.monadinfra.com/validators/{{ env }}/validators.toml"
+monad_forkpoint_config_url: "https://bucket.monadinfra.com/forkpoint/{{ env }}/forkpoint.toml"
+
+# Staking CLI for validator registration
+staking_cli_repo: "https://github.com/monad-developers/staking-sdk-cli.git"
+staking_cli_version: "main"
+staking_cli_dir: "{{ monad_home }}/staking-sdk-cli"
+
+# Testnet chain ID: 10143
+monad_chain_id: 10143
+monad_network_name: "testnet"
+
+monad:
+  validator:
+    consensus:
+      ports:
+        p2p_port: 8000
+        auth_udp_port: 8001
+    rpc:
+      ports:
+        rpc_port: 8002
+    otel_endpoint: "http://0.0.0.0:4317"
+  fullnode:
+    consensus:
+      ports:
+        p2p_port: 8010
+    rpc:
+      ports:
+        rpc_port: 8090
+    otel_endpoint: "http://0.0.0.0:4317"
+
+monad_rpc_port: "{{ monad[type | default('validator')].rpc.ports.rpc_port }}"
+monad_p2p_port: "{{ monad[type | default('validator')].consensus.ports.p2p_port }}"
+
+# TrieDB: requires dedicated NVMe, min 2TB recommended
+setup_triedb: false
+triedb_config:
+  drive: "/dev/nvme0n1"
+  path: "/dev/triedb"
+  partition_name: "triedb"
+  partition_number: 1
+
+# Loop device alternative for testing (not for production)
+setup_triedb_loop: false
+triedb_loop_config:
+  image_file: "/monad-triedb.img"
+  image_size: "1T"
+
+# Kernel tuning for high-performance networking
+sysctl_params:
+  vm.nr_hugepages: 2048
+  net.core.rmem_max: 62500000
+  net.core.rmem_default: 62500000
+  net.core.wmem_max: 62500000
+  net.core.wmem_default: 62500000
+  net.ipv4.tcp_rmem: "4096 62500000 62500000"
+  net.ipv4.tcp_wmem: "4096 62500000 62500000"
+  net.core.somaxconn: 65535
+  net.core.netdev_max_backlog: 65535
+  net.ipv4.tcp_max_syn_backlog: 65535
+  net.ipv4.tcp_fin_timeout: 10
+  net.ipv4.tcp_tw_reuse: 1
+  vm.swappiness: 10
+  vm.dirty_ratio: 60
+  vm.dirty_background_ratio: 2
+
+# libtbb12, liburing2 required by monad binary
+required_packages:
+  - curl
+  - wget
+  - git
+  - vim
+  - htop
+  - jq
+  - unzip
+  - build-essential
+  - python3
+  - python3-pip
+  - python3-venv
+  - ufw
+  - fail2ban
+  - logrotate
+  - chrony
+  - acl
+  - openssl
+  - pv
+  - nvme-cli
+  - aria2
+  - zstd
+  - libtbb12
+  - liburing2
+  - libarchive-dev
+  - libbrotli-dev
+  - whiptail
+  - libhugetlbfs-dev
+  - libhugetlbfs-bin
+  - libcrypto++-dev
+
+# Ubuntu 24.04 specific boost libraries
+ubuntu_2404_packages:
+  - libboost-context1.83.0
+  - libboost-fiber1.83.0
+  - libboost-stacktrace1.83.0
+
+# Validator staking: min 100k MON self-stake, 10M total to activate
+min_self_stake: 100000
+validator_stake_amount: 100000
+
+monitoring_enabled: true
+prometheus_port: 9100
+grafana_port: 3000
+
+otel:
+  enabled: false
+  source_url: "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download"
+  ports:
+    grpc_port: 4317
+    http_port: 4318
+    prometheus_metrics_exporter_port: 8889
+
+alert_disk_usage_percent: 85
+alert_memory_usage_percent: 90
+alert_cpu_usage_percent: 95
+alert_sync_lag_blocks: 100
+
+backup_enabled: true
+backup_retention_days: 7
+backup_schedule: "0 2 * * *"
+backup_destination: "{{ monad_home }}/backups"
+
+# Security
+ssh_port: 22
+ssh_permit_root_login: "no"
+ssh_password_authentication: "no"
+
+firewall_allowed_tcp_ports:
+  - "{{ ssh_port }}"
+  - "{{ monad_p2p_port }}"
+
+firewall_allowed_udp_ports:
+  - "{{ monad_p2p_port }}"
+  - "{{ monad[type | default('validator')].consensus.ports.auth_udp_port | default(8001) }}"
+
+fail2ban_enabled: true
+fail2ban_maxretry: 5
+fail2ban_bantime: 3600
+
+# Systemd limits - 64G memory, high fd limit for p2p connections
+systemd_memory_max: "64G"
+systemd_limit_nofile: 1048576
+systemd_restart_sec: 4
+
+# Docker mode (alternative to systemd, not recommended for production)
+use_docker: false
+use_prebuilt_images: true
+
+docker_edition: 'ce'
+docker_packages:
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
+  - docker-buildx-plugin
+  - docker-compose-plugin
+
+docker_users:
+  - "{{ monad_user }}"
