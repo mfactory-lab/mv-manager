@@ -7,9 +7,9 @@ project: monad
 
 # Service identity
 service_identifier: "monad-consensus"
-monad_user: "{{ service_identifier }}"
-monad_group: "{{ project }}"
-monad_home: "/opt/{{ service_identifier }}"
+monad_user: "monad-consensus"
+monad_group: "monad-consensus"
+monad_home: "/opt/monad-consensus"
 
 monad_bin_dir: "{{ monad_home }}/bin"
 monad_config_dir: "{{ monad_home }}/config"
