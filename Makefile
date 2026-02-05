@@ -1,92 +1,87 @@
 INV := inventory/local.yml
-VAULT_ARGS ?=
-INV_ARG := -i $(INV)
-.DEFAULT_GOAL := help
+A := -i $(INV) $(if $(NODE),--limit $(NODE),)
 G := \033[32m
 N := \033[0m
 
-.PHONY: deploy register upgrade snapshot execution otel health status sync monitor logs restart backup cleanup recovery diagnose ping ssh info check vault-edit vault-encrypt vault-decrypt help
+.DEFAULT_GOAL := help
+.PHONY: deploy register upgrade snapshot execution otel health status sync logs restart backup cleanup recovery diagnose ping ssh info check vault-edit vault-encrypt vault-decrypt help
 
 # Deployment
-deploy: ## Full validator deployment
-	ansible-playbook $(INV_ARG) playbooks/deploy-validator.yml $(VAULT_ARGS)
+deploy: ## Deploy validators [NODE=]
+	ansible-playbook $(A) playbooks/deploy-validator.yml
 
-register: ## Register validator (requires synced node + 100k MON)
-	ansible-playbook $(INV_ARG) playbooks/register-validator.yml $(VAULT_ARGS)
+register: ## Register validator [NODE=]
+	ansible-playbook $(A) playbooks/register-validator.yml
 
-upgrade: ## Upgrade monad packages
-	ansible-playbook $(INV_ARG) playbooks/upgrade-node.yml $(VAULT_ARGS)
+upgrade: ## Upgrade packages [NODE=]
+	ansible-playbook $(A) playbooks/upgrade-node.yml
 
-snapshot: ## Download and apply latest snapshot
-	ansible-playbook $(INV_ARG) playbooks/snapshot.yml $(VAULT_ARGS)
+snapshot: ## Apply snapshot [NODE=]
+	ansible-playbook $(A) playbooks/snapshot.yml
 
-execution: ## Setup execution layer (separate from consensus)
-	ansible-playbook $(INV_ARG) playbooks/setup-execution.yml $(VAULT_ARGS)
+execution: ## Setup execution [NODE=]
+	ansible-playbook $(A) playbooks/setup-execution.yml
 
-otel: ## Setup OpenTelemetry collector for metrics export
-	ansible-playbook $(INV_ARG) playbooks/setup-otel.yml $(VAULT_ARGS)
+otel: ## Setup OpenTelemetry [NODE=]
+	ansible-playbook $(A) playbooks/setup-otel.yml
 
 # Monitoring
-health: ## Run health checks
-	ansible-playbook $(INV_ARG) playbooks/maintenance.yml --tags health $(VAULT_ARGS)
+health: ## Health checks [NODE=]
+	ansible-playbook $(A) playbooks/maintenance.yml --tags health
 
-status: ## Show service status and disk usage
-	ansible-playbook $(INV_ARG) playbooks/maintenance.yml --tags status $(VAULT_ARGS)
+status: ## Service status [NODE=]
+	ansible-playbook $(A) playbooks/maintenance.yml --tags status
 
-sync: ## Check node sync progress
-	ansible-playbook $(INV_ARG) playbooks/maintenance.yml --tags sync $(VAULT_ARGS)
+sync: ## Sync progress [NODE=]
+	ansible-playbook $(A) playbooks/maintenance.yml --tags sync
 
-watch: ## Watch sync progress in real-time
-	@ssh root@$$(ansible-inventory $(INV_ARG) --list 2>/dev/null | jq -r '._meta.hostvars | to_entries | map(select(.value.type == "validator")) | .[0].value.ansible_host') "tail -f /opt/monad-consensus/log/monad-consensus.log | grep --line-buffered -E 'round|block|commit|sync|statesync'"
-
-logs: ## View recent logs (last 50 lines)
-	@ansible $(INV_ARG) validators -m shell -a "tail -50 /opt/monad-consensus/log/monad-consensus.log" $(VAULT_ARGS)
+logs: ## View logs [NODE=]
+	ansible $(A) validators -m shell -a "tail -50 /opt/monad-consensus/log/monad-consensus.log"
 
 # Operations
-restart: ## Restart monad service
-	ansible-playbook $(INV_ARG) playbooks/maintenance.yml --tags restart $(VAULT_ARGS)
+restart: ## Restart service [NODE=]
+	ansible-playbook $(A) playbooks/maintenance.yml --tags restart
 
-backup: ## Backup config and keys
-	ansible-playbook $(INV_ARG) playbooks/maintenance.yml --tags backup $(VAULT_ARGS)
+backup: ## Backup keys [NODE=]
+	ansible-playbook $(A) playbooks/maintenance.yml --tags backup
 
-cleanup: ## Cleanup old backups
-	ansible-playbook $(INV_ARG) playbooks/maintenance.yml --tags cleanup $(VAULT_ARGS)
+cleanup: ## Cleanup backups [NODE=]
+	ansible-playbook $(A) playbooks/maintenance.yml --tags cleanup
 
 # Recovery
-recovery: ## Full recovery procedure
-	ansible-playbook $(INV_ARG) playbooks/recovery.yml $(VAULT_ARGS)
+recovery: ## Full recovery [NODE=]
+	ansible-playbook $(A) playbooks/recovery.yml
 
-diagnose: ## Show diagnostic info (service status, errors)
-	ansible-playbook $(INV_ARG) playbooks/recovery.yml --tags diagnose $(VAULT_ARGS)
+diagnose: ## Diagnostic info [NODE=]
+	ansible-playbook $(A) playbooks/recovery.yml --tags diagnose
 
 # Utilities
-ping: ## Test connectivity to all hosts
-	ansible $(INV_ARG) all -m ping $(VAULT_ARGS)
+ping: ## Test connectivity [NODE=]
+	ansible $(A) all -m ping
 
-ssh: ## SSH to first validator
-	@ssh root@$$(ansible-inventory $(INV_ARG) --list 2>/dev/null | jq -r '._meta.hostvars | to_entries | map(select(.value.type == "validator")) | .[0].value.ansible_host')
+ssh: ## SSH to validator [ENV=] [NODE=]
+	@./scripts/get-host.sh "$(ENV)" "$(NODE)" | xargs -I {} ssh root@{}
 
-info: ## Show validators info [ENV=testnet|mainnet] [NODE=name]
+info: ## Show validator info [ENV=] [NODE=]
 	@./scripts/validator-info.sh "$(ENV)" "$(NODE)"
 
-check: ## Syntax check playbooks
-	ansible-playbook $(INV_ARG) playbooks/deploy-validator.yml --syntax-check
+check: ## Syntax check
+	ansible-playbook $(A) playbooks/deploy-validator.yml --syntax-check
 
 # Vault
-vault-edit: ## Edit encrypted vault
+vault-edit: ## Edit vault
 	ansible-vault edit group_vars/vault.yml
 
-vault-encrypt: ## Encrypt vault file
+vault-encrypt: ## Encrypt vault
 	ansible-vault encrypt group_vars/vault.yml
 
-vault-decrypt: ## Decrypt vault file
+vault-decrypt: ## Decrypt vault
 	ansible-vault decrypt group_vars/vault.yml
 
-# ------------------------------------------------------------------------
-
-help: ## Show available targets
+# Help
+help: ## Show targets
 	@echo "Monad Validator Manager"
 	@echo ""
-	@echo "Usage: make <target> [INV=inventory/local.yml]"
+	@echo "Usage: make <target> [NODE=name] [ENV=testnet|mainnet]"
 	@echo ""
-	@awk 'BEGIN {FS=":.*##"} /^[a-zA-Z0-9_-]+:.*##/ { printf "  $(G)%-16s$(N) %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS=":.*##"} /^[a-zA-Z0-9_-]+:.*##/ { printf "  $(G)%-14s$(N) %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
