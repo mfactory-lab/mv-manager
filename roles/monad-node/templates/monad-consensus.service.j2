@@ -4,14 +4,14 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-User={{ service_identifier }}
-Group={{ project }}
+User={{ monad_user }}
+Group={{ monad_group }}
 UMask=002
 WorkingDirectory={{ monad_home }}
 EnvironmentFile={{ monad_general_env_file }}
 EnvironmentFile={{ monad_secrets_env_file }}
 
-ExecStart={{ monad_bin_dir }}/{{ service_identifier }} \
+ExecStart=/usr/local/bin/monad-node \
     --secp-identity {{ monad_secp_key_file }} \
     --bls-identity {{ monad_bls_key_file }} \
     --node-config {{ monad_node_config_file }} \
@@ -22,9 +22,7 @@ ExecStart={{ monad_bin_dir }}/{{ service_identifier }} \
     --statesync-ipc-path {{ monad_statesync_socket }} \
     --ledger-path {{ monad_data_dir }} \
     --triedb-path {{ triedb_config.path }} \
-{% if otel.enabled | default(false) %}
-    --otel-endpoint "{{ monad[type].otel_endpoint }}" \
-{% endif %}
+    --otel-endpoint "{{ monad[type].otel_endpoint | default('http://127.0.0.1:4317') }}" \
     --statesync-sq-thread-cpu 8 \
     --record-metrics-interval-seconds 1 \
     --validators-path {{ monad_validators_config_file }} \

@@ -1,53 +1,173 @@
-# Monad Node role - Install and configure monad-bft
+# Monad Node role - Install and configure monad validator
 ---
 
 # =============================================================================
-# CLONE AND SETUP
+# APT REPOSITORY SETUP
 # =============================================================================
-- name: Clone monad-bft repository
-  git:
-    repo: "{{ monad_bft_repo }}"
-    dest: "{{ monad_home }}/monad-bft"
-    version: "{{ monad_bft_version }}"
-    force: no
-    update: yes
-  become_user: "{{ monad_user }}"
-  register: git_clone
+- name: Check if Category Labs GPG key exists
+  stat:
+    path: /etc/apt/keyrings/category-labs.gpg
+  register: gpg_key_stat
   tags: [monad, install]
 
-- name: Initialize git submodules
-  command: git submodule update --init --recursive
-  args:
-    chdir: "{{ monad_home }}/monad-bft"
-  become_user: "{{ monad_user }}"
-  when: git_clone.changed
-  tags: [monad, install]
-
-- name: Ensure config directory exists
+- name: Create apt keyrings directory
   file:
-    path: "{{ monad_config_dir }}"
+    path: /etc/apt/keyrings
     state: directory
-    owner: "{{ monad_user }}"
-    group: "{{ monad_group }}"
-    mode: '0750'
-  tags: [monad, config]
-
-- name: Ensure logs directory exists
-  file:
-    path: "{{ monad_logs_dir }}"
-    state: directory
-    owner: "{{ monad_user }}"
-    group: "{{ monad_group }}"
     mode: '0755'
+  when: not gpg_key_stat.stat.exists
+  tags: [monad, install]
+
+- name: Download Category Labs GPG key
+  get_url:
+    url: https://pkg.category.xyz/category-labs.gpg
+    dest: /etc/apt/keyrings/category-labs.gpg
+    mode: '0644'
+  when: not gpg_key_stat.stat.exists
+  tags: [monad, install]
+
+- name: Check if apt source exists
+  stat:
+    path: /etc/apt/sources.list.d/category-labs.sources
+  register: apt_source_stat
+  tags: [monad, install]
+
+- name: Add Category Labs apt repository
+  copy:
+    content: |
+      Types: deb
+      URIs: https://pkg.category.xyz/
+      Suites: noble
+      Components: main
+      Signed-By: /etc/apt/keyrings/category-labs.gpg
+    dest: /etc/apt/sources.list.d/category-labs.sources
+    mode: '0644'
+  register: apt_repo
+  when: not apt_source_stat.stat.exists
+  tags: [monad, install]
+
+- name: Update apt cache
+  apt:
+    update_cache: yes
+  when: apt_repo.changed | default(false)
+  tags: [monad, install]
+
+# =============================================================================
+# INSTALL MONAD PACKAGES
+# =============================================================================
+- name: Install monad package
+  apt:
+    name: monad
+    state: present
+  tags: [monad, install]
+
+# =============================================================================
+# CONFIGURATION DOWNLOADS
+# =============================================================================
+- name: Download validators config
+  get_url:
+    url: "{{ monad_validators_config_url }}"
+    dest: "{{ monad_validators_config_file }}"
+    mode: '0644'
+    owner: "{{ monad_user }}"
+    group: "{{ monad_group }}"
+    force: yes
   tags: [monad, config]
+
+- name: Download forkpoint config
+  get_url:
+    url: "{{ monad_forkpoint_config_url }}"
+    dest: "{{ monad_forkpoint_file }}"
+    mode: '0644'
+    owner: "{{ monad_user }}"
+    group: "{{ monad_group }}"
+    force: yes
+  tags: [monad, config]
+
+# =============================================================================
+# KEYS SETUP
+# =============================================================================
+- name: Check if SECP key exists
+  stat:
+    path: "{{ monad_secp_key_file }}"
+  register: secp_key_stat
+  tags: [monad, keys]
+
+- name: Check if BLS key exists
+  stat:
+    path: "{{ monad_bls_key_file }}"
+  register: bls_key_stat
+  tags: [monad, keys]
+
+- name: Create SECP keystore
+  shell: |
+    /usr/local/bin/monad-keystore import \
+      --ikm "{{ vault_secp_ikm }}" \
+      --key-type secp \
+      --keystore-path {{ monad_secp_key_file }} \
+      --password "{{ vault_keystore_password }}"
+  become_user: "{{ monad_user }}"
+  when: not secp_key_stat.stat.exists
+  no_log: true
+  tags: [monad, keys]
+
+- name: Create BLS keystore
+  shell: |
+    /usr/local/bin/monad-keystore import \
+      --ikm "{{ vault_bls_ikm }}" \
+      --key-type bls \
+      --keystore-path {{ monad_bls_key_file }} \
+      --password "{{ vault_keystore_password }}"
+  become_user: "{{ monad_user }}"
+  when: not bls_key_stat.stat.exists
+  no_log: true
+  tags: [monad, keys]
+
+- name: Secure key files
+  file:
+    path: "{{ item }}"
+    owner: "{{ monad_user }}"
+    group: "{{ monad_group }}"
+    mode: '0600'
+  loop:
+    - "{{ monad_secp_key_file }}"
+    - "{{ monad_bls_key_file }}"
+  tags: [monad, keys]
 
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
+- name: Generate name record signature
+  shell: |
+    /usr/local/bin/monad-sign-name-record \
+      --address {{ ansible_host }}:{{ monad_p2p_port }} \
+      --authenticated-udp-port {{ monad[type].consensus.ports.auth_udp_port }} \
+      --self-record-seq-num 1 \
+      --keystore-path {{ monad_secp_key_file }} \
+      --password "{{ vault_keystore_password }}" 2>&1 | grep self_name_record_sig | cut -d'"' -f2
+  register: name_record_sig_result
+  changed_when: false
+  no_log: true
+  tags: [monad, config]
+
+- name: Set name record signature fact
+  set_fact:
+    self_name_record_sig: "{{ name_record_sig_result.stdout }}"
+  tags: [monad, config]
+
 - name: Create monad environment file
   template:
     src: monad.env.j2
-    dest: "{{ monad_home }}/.env"
+    dest: "{{ monad_general_env_file }}"
+    owner: "{{ monad_user }}"
+    group: "{{ monad_group }}"
+    mode: '0600'
+  tags: [monad, config]
+
+- name: Create secrets environment file
+  template:
+    src: secrets.env.j2
+    dest: "{{ monad_secrets_env_file }}"
     owner: "{{ monad_user }}"
     group: "{{ monad_group }}"
     mode: '0600'
@@ -57,31 +177,23 @@
 - name: Create node.toml configuration
   template:
     src: node.toml.j2
-    dest: "{{ monad_config_dir }}/node.toml"
+    dest: "{{ monad_node_config_file }}"
     owner: "{{ monad_user }}"
     group: "{{ monad_group }}"
     mode: '0600'
-  notify: Reload monad config
+  notify: Restart monad
   tags: [monad, config]
 
-- name: Create Docker compose override for production
-  template:
-    src: docker-compose.override.yml.j2
-    dest: "{{ monad_home }}/monad-bft/docker/single-node/docker-compose.override.yml"
-    owner: "{{ monad_user }}"
-    group: "{{ monad_group }}"
-    mode: '0644'
-  tags: [monad, docker]
-
 # =============================================================================
-# NODE STARTUP
+# SYSTEMD SERVICE
 # =============================================================================
 - name: Create systemd service for monad
   template:
-    src: monad-node.service.j2
-    dest: /etc/systemd/system/monad-node.service
+    src: monad-consensus.service.j2
+    dest: /etc/systemd/system/monad-consensus.service
     mode: '0644'
   register: systemd_service
+  notify: Restart monad
   tags: [monad, systemd]
 
 - name: Reload systemd daemon
@@ -90,28 +202,11 @@
   when: systemd_service.changed
   tags: [monad, systemd]
 
-- name: Check if monad containers are running
-  shell: docker ps --filter "name=single-node" --format "{{ '{{' }}.Names{{ '}}' }}" | wc -l
-  register: running_containers
-  changed_when: false
-  tags: [monad, start]
-
-- name: Pull Docker images (prebuilt)
-  shell: |
-    cd {{ monad_home }}/monad-bft/docker/single-node
-    docker compose pull
-  become_user: "{{ monad_user }}"
-  when:
-    - use_prebuilt_images | default(true)
-    - running_containers.stdout | int < 3
-  tags: [monad, start]
-
-- name: Start monad node via systemd
+- name: Enable and start monad service
   systemd:
-    name: monad-node
+    name: monad-consensus
     state: started
     enabled: yes
-  when: running_containers.stdout | int < 3
   tags: [monad, start]
 
 # =============================================================================
@@ -133,28 +228,16 @@
 # =============================================================================
 # VERIFICATION
 # =============================================================================
-- name: Wait for RPC to be available
-  uri:
-    url: "http://localhost:{{ monad_rpc_port }}"
-    method: POST
-    body: '{"jsonrpc":"2.0","method":"eth_chainId","id":1}'
-    body_format: json
-    headers:
-      Content-Type: "application/json"
-    status_code: 200
-  register: rpc_check
-  until: rpc_check.status == 200
-  retries: 60
+- name: Wait for monad service to start
+  systemd:
+    name: monad-consensus
+  register: monad_service
+  until: monad_service.status.ActiveState == "active"
+  retries: 6
   delay: 10
   tags: [monad, verify]
 
-- name: Verify chain ID matches expected
-  fail:
-    msg: "Chain ID mismatch! Expected {{ monad_chain_id }}, got {{ rpc_check.json.result | int(base=16) }}"
-  when: rpc_check.json.result | int(base=16) != monad_chain_id
-  tags: [monad, verify]
-
-- name: Display chain ID verification
+- name: Display service status
   debug:
-    msg: "Monad node running - Chain ID: {{ rpc_check.json.result }} ({{ rpc_check.json.result | int(base=16) }})"
+    msg: "Monad consensus service is {{ monad_service.status.ActiveState }}"
   tags: [monad, verify]
