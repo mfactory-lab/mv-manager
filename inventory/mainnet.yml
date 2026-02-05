@@ -1,22 +1,21 @@
 ---
+# Example mainnet inventory - copy to local.yml and customize
 all:
   vars:
     env: mainnet
-    ansible_python_interpreter: /usr/bin/python3
 
   children:
     monad:
       children:
         validators:
           hosts:
-            # validator-01:
-            #   ansible_host: "{{ vault_validator_01_ip }}"
-            #   ansible_user: root
-            #   type: validator
-            #   setup_triedb: false
-            #   triedb_config:
-            #     path: "/dev/triedb"
-            #   register_validator: false
+             my-validator:
+               ansible_host: "1.2.3.4"
+               type: validator
+               setup_triedb: true
+               triedb_config:
+                 path: "/dev/triedb"
+               register_validator: false
 
         fullnodes:
           hosts: {}

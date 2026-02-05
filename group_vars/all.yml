@@ -1,7 +1,6 @@
 ---
 # Monad Validator Configuration
 
-org: "myorg"
 env: testnet
 project: monad
 

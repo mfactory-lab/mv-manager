@@ -41,7 +41,7 @@ processors:
   resource:
     attributes:
       - key: node_name
-        value: "{{ org }}"
+        value: "{{ inventory_hostname }}"
         action: upsert
       - key: env
         value: "{{ env }}"
