@@ -3,7 +3,7 @@ VAULT_ARGS ?=
 G := \033[32m
 N := \033[0m
 
-.PHONY: deploy register upgrade health status sync logs restart backup cleanup recovery diagnose ping ssh check vault-edit vault-encrypt vault-decrypt help
+.PHONY: deploy register upgrade health status sync monitor logs restart backup cleanup recovery diagnose ping ssh check vault-edit vault-encrypt vault-decrypt help
 
 # Deployment
 deploy: ## Full validator deployment
@@ -25,11 +25,11 @@ status: ## Show service status and disk usage
 sync: ## Check node sync progress
 	ansible-playbook playbooks/maintenance.yml --tags sync $(VAULT_ARGS)
 
+monitor: ## Watch sync progress in real-time
+	@ssh root@$$(grep vault_validator_01_ip group_vars/vault.yml | cut -d'"' -f2) "tail -f /opt/monad-consensus/log/monad-consensus.log | grep --line-buffered -E 'round|block|commit|sync|statesync'"
+
 logs: ## View recent logs (last 50 lines)
 	@ansible validators -m shell -a "tail -50 /opt/monad-consensus/log/monad-consensus.log" -e @group_vars/vault.yml $(VAULT_ARGS)
-
-watch: ## Watch sync progress in real-time
-	@ssh root@$$(ansible-inventory --list -e @group_vars/vault.yml 2>/dev/null | jq -r '._meta.hostvars | to_entries[0].value.ansible_host') "tail -f /opt/monad-consensus/log/monad-consensus.log | grep --line-buffered -E 'round|block|commit|sync|statesync'"
 
 # Operations
 restart: ## Restart monad service
@@ -53,7 +53,7 @@ ping: ## Test connectivity to all hosts
 	ansible all -m ping -e @group_vars/vault.yml $(VAULT_ARGS)
 
 ssh: ## SSH to first validator
-	@ansible-inventory --list -e @group_vars/vault.yml $(VAULT_ARGS) 2>/dev/null | jq -r '.validators.hosts[0]' | xargs -I{} ssh root@{}
+	@ssh root@$$(grep vault_validator_01_ip group_vars/vault.yml | cut -d'"' -f2)
 
 check: ## Syntax check playbooks
 	ansible-playbook playbooks/deploy-validator.yml --syntax-check
@@ -68,8 +68,9 @@ vault-encrypt: ## Encrypt vault file
 vault-decrypt: ## Decrypt vault file
 	ansible-vault decrypt group_vars/vault.yml
 
-# Help
+# ------------------------------------------------------------------------
+
 help: ## Show available targets
-	@echo "Monad Validator - Ansible Automation"
+	@echo "Monad Validator Manager"
 	@echo ""
 	@awk 'BEGIN {FS=":.*##"} /^[a-zA-Z0-9_-]+:.*##/ { printf "  $(G)%-16s$(N) %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
