@@ -1,6 +1,6 @@
 # Monad Validator Manager
 
-Ansible automation for deploying and managing Monad validators on testnet and mainnet.
+Deploy Monad validators in minutes, not hours. Ansible automation for the entire lifecycle—setup, monitoring, upgrades, and recovery—on testnet and mainnet.
 
 ## Requirements
 
