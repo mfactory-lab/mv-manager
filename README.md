@@ -38,8 +38,6 @@ make sync
 ### Vault Secrets (`group_vars/vault.yml`)
 
 ```yaml
-vault_validator_01_ip: "1.2.3.4"
-
 # IKM (Initial Key Material) - generates your keys
 vault_secp_ikm: "64_hex_chars"
 vault_bls_ikm: "64_hex_chars"
