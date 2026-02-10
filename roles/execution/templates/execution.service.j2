@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 User={{ execution_user }}
 Group={{ execution_group }}
-Type=simple
+UMask=002
 WorkingDirectory={{ execution_home_dir }}
 EnvironmentFile={{ execution_env_file }}
 
@@ -17,13 +17,15 @@ ExecStart={{ execution_bin_dir }}/{{ execution_service_identifier }} \
     --statesync {{ monad_socket_dir }}/statesync.sock \
     --log-level {{ execution_log_level | default('INFO') }} \
     --sq-thread-cpu {{ execution_sq_thread_cpu | default(1) }}
-
 Restart=always
-RestartSec=4
-LimitNOFILE=1048576
+RestartSec={{ execution_restart_sec }}
+LimitNOFILE={{ execution_limit_nofile }}
+DeviceAllow={{ triedb_config.path }} rw
 LimitMEMLOCK=infinity
-MemoryMax=64G
-
+MemoryDenyWriteExecute=false
+ProtectKernelModules=no
+ProtectKernelLogs=no
+MemoryMax={{ execution_memory_max }}
 StandardOutput=append:{{ execution_log_file }}
 StandardError=inherit
 

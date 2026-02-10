@@ -27,3 +27,7 @@ execution_ipc_socket: "{{ execution_socket_dir }}/execution.sock"
 execution_chain: "monad_{{ env }}"
 execution_log_level: "INFO"
 execution_sq_thread_cpu: 1
+
+execution_memory_max: "96G"
+execution_limit_nofile: 1048576
+execution_restart_sec: 4
