@@ -102,13 +102,13 @@
 # =============================================================================
 - name: Check if SECP keystore exists
   stat:
-    path: "{{ monad_config_dir }}/id-secp"
+    path: "{{ monad_key_dir }}/id-secp"
   register: secp_keystore
   tags: [validator, keys]
 
 - name: Check if BLS keystore exists
   stat:
-    path: "{{ monad_config_dir }}/id-bls"
+    path: "{{ monad_key_dir }}/id-bls"
   register: bls_keystore
   tags: [validator, keys]
 
@@ -118,8 +118,8 @@
     export KEYSTORE_PASSWORD="{{ vault_keystore_password }}"
     monad-keystore recover \
       --password "$KEYSTORE_PASSWORD" \
-      --keystore-path {{ monad_config_dir }}/id-secp \
-      --key-type secp 2>/dev/null | sed -n 's/.*Private key: \([a-fA-F0-9]\{64\}\).*/\1/p'
+      --keystore-path {{ monad_key_dir }}/id-secp \
+      --key-type secp 2>/dev/null | sed -n 's/.*Secp private key: \([a-fA-F0-9]\{64\}\).*/\1/p'
   args:
     executable: /bin/bash
   register: secp_key_result
@@ -138,8 +138,8 @@
     export KEYSTORE_PASSWORD="{{ vault_keystore_password }}"
     monad-keystore recover \
       --password "$KEYSTORE_PASSWORD" \
-      --keystore-path {{ monad_config_dir }}/id-bls \
-      --key-type bls 2>/dev/null | sed -n 's/.*Private key: \(0x[a-fA-F0-9]\{64\}\).*/\1/p'
+      --keystore-path {{ monad_key_dir }}/id-bls \
+      --key-type bls 2>/dev/null | sed -n 's/.*BLS private key: \([a-fA-F0-9]\{64\}\).*/\1/p'
   args:
     executable: /bin/bash
   register: bls_key_result
@@ -155,7 +155,7 @@
 - name: Set key facts
   set_fact:
     effective_secp_key: "{{ secp_key_result.stdout | default(vault_secp_private_key, true) }}"
-    effective_bls_key: "{{ bls_key_result.stdout | default(vault_bls_private_key, true) }}"
+    effective_bls_key: "{{ '0x' + bls_key_result.stdout if (bls_key_result.stdout | default('')) and not bls_key_result.stdout.startswith('0x') else bls_key_result.stdout | default(vault_bls_private_key, true) }}"
   no_log: true
   tags: [validator, keys]
 
@@ -237,7 +237,7 @@
     set -e
     source {{ monad_home }}/staking-sdk-cli/cli-venv/bin/activate
     cd {{ monad_home }}/staking-sdk-cli
-    python staking-cli/main.py add-validator \
+    echo "y" | python staking-cli/main.py add-validator \
       --secp-privkey "{{ effective_secp_key }}" \
       --bls-privkey "{{ effective_bls_key }}" \
       --auth-address "{{ auth_address }}" \

@@ -1,6 +1,5 @@
 ---
 is_validator: true
-register_validator: false
 validator_stake_amount: 100000
 
 secp_private_key: "{{ vault_secp_private_key }}"

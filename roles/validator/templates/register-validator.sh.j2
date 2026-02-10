@@ -41,20 +41,24 @@ echo ""
 read -s -p "Enter SECP private key: " SECP_KEY
 echo ""
 
+{% raw %}
 # Validate SECP key format
 if [ ${#SECP_KEY} -ne 64 ]; then
   echo "ERROR: SECP key must be 64 hex characters (without 0x prefix)"
   exit 1
 fi
+{% endraw %}
 
 read -s -p "Enter BLS private key (with 0x prefix): " BLS_KEY
 echo ""
 
+{% raw %}
 # Validate BLS key format
 if [ ${#BLS_KEY} -ne 66 ] || [[ ! "$BLS_KEY" =~ ^0x ]]; then
   echo "ERROR: BLS key must be 66 characters (0x + 64 hex chars)"
   exit 1
 fi
+{% endraw %}
 
 echo ""
 echo "============================================"
