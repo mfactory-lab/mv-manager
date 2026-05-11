@@ -118,6 +118,12 @@ sysctl_params:
   vm.swappiness: 10
   vm.dirty_ratio: 60
   vm.dirty_background_ratio: 2
+  # Panic-on-hang: convert silent kernel freezes into 60s auto-reboot
+  kernel.panic: 60
+  kernel.panic_on_oops: 1
+  kernel.softlockup_panic: 1
+  kernel.hardlockup_panic: 1
+  kernel.nmi_watchdog: 1
 
 # libtbb12, liburing2 required by monad binary
 required_packages:
