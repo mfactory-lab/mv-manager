@@ -1,0 +1,16 @@
+---
+- name: Wait for sidecar health endpoint
+  uri:
+    url: "http://127.0.0.1:{{ fastlane_sidecar_port }}/health"
+    method: GET
+    return_content: yes
+  register: sidecar_health
+  until: sidecar_health.status == 200
+  retries: 12
+  delay: 5
+  tags: [fastlane, health]
+
+- name: Display sidecar health
+  debug:
+    msg: "Sidecar /health: {{ sidecar_health.json | default(sidecar_health.content) }}"
+  tags: [fastlane, health]
