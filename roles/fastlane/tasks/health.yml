@@ -1,43 +1,42 @@
 ---
-- name: Verify fastlane-sidecar user unit reached active state
-  become_user: "{{ monad_user }}"
-  environment: "{{ fastlane_user_env }}"
-  command: systemctl --user is-active fastlane-sidecar.service
-  register: unit_active
-  changed_when: false
-  failed_when: false
-  retries: 6
-  delay: 5
-  until: (unit_active.stdout | default('') | trim) == 'active'
+- name: Health gate (skipped in --check mode)
+  when: not ansible_check_mode
   tags: [fastlane, health]
+  block:
+    - name: Verify fastlane-sidecar user unit reached active state
+      become_user: "{{ monad_user }}"
+      environment: "{{ fastlane_user_env }}"
+      command: systemctl --user is-active fastlane-sidecar.service
+      register: unit_active
+      changed_when: false
+      failed_when: false
+      retries: 6
+      delay: 5
+      until: (unit_active.stdout | default('') | trim) == 'active'
 
-- name: Fail if user unit did not reach active state
-  fail:
-    msg: "fastlane-sidecar.service user unit state is '{{ unit_active.stdout | default('') | trim }}' (rc={{ unit_active.rc }}). Health gate aborted; legacy cleanup will not run."
-  when: (unit_active.stdout | default('') | trim) != 'active'
-  tags: [fastlane, health]
+    - name: Fail if user unit did not reach active state
+      fail:
+        msg: "fastlane-sidecar.service user unit state is '{{ unit_active.stdout | default('') | trim }}' (rc={{ unit_active.rc }}). Health gate aborted; legacy cleanup will not run."
+      when: (unit_active.stdout | default('') | trim) != 'active'
 
-- name: Verify fastlane-sidecar container is running
-  become_user: "{{ monad_user }}"
-  environment: "{{ fastlane_user_env }}"
-  command: docker ps --filter name=^fastlane-sidecar$ --filter status=running --format '{{ "{{" }}.Names{{ "}}" }}'
-  register: container_running
-  changed_when: false
-  failed_when: (container_running.stdout | default('') | trim) != 'fastlane-sidecar'
-  tags: [fastlane, health]
+    - name: Verify fastlane-sidecar container is running
+      become_user: "{{ monad_user }}"
+      environment: "{{ fastlane_user_env }}"
+      command: docker ps --filter name=^fastlane-sidecar$ --filter status=running --format '{{ "{{" }}.Names{{ "}}" }}'
+      register: container_running
+      changed_when: false
+      failed_when: (container_running.stdout | default('') | trim) != 'fastlane-sidecar'
 
-- name: Wait for sidecar health endpoint
-  uri:
-    url: "http://127.0.0.1:{{ fastlane_sidecar_port }}/health"
-    method: GET
-    return_content: yes
-  register: sidecar_health
-  until: sidecar_health.status == 200
-  retries: 12
-  delay: 5
-  tags: [fastlane, health]
+    - name: Wait for sidecar health endpoint
+      uri:
+        url: "http://127.0.0.1:{{ fastlane_sidecar_port }}/health"
+        method: GET
+        return_content: yes
+      register: sidecar_health
+      until: sidecar_health.status == 200
+      retries: 12
+      delay: 5
 
-- name: Display sidecar health
-  debug:
-    msg: "Sidecar /health: {{ sidecar_health.json | default(sidecar_health.content) }}"
-  tags: [fastlane, health]
+    - name: Display sidecar health
+      debug:
+        msg: "Sidecar /health: {{ sidecar_health.json | default(sidecar_health.content) }}"

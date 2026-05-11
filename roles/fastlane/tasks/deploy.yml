@@ -36,6 +36,7 @@
   command: "docker pull {{ fastlane_sidecar_image }}@{{ fastlane_sidecar_image_digest }}"
   register: docker_pull
   changed_when: "'Downloaded newer image' in docker_pull.stdout or 'Pull complete' in docker_pull.stdout"
+  when: not ansible_check_mode
   tags: [fastlane, deploy]
 
 - name: Wait for mempool socket to exist
@@ -63,4 +64,5 @@
   environment: "{{ fastlane_user_env }}"
   command: systemctl --user enable --now fastlane-sidecar.service
   changed_when: false
+  when: not ansible_check_mode
   tags: [fastlane, deploy]

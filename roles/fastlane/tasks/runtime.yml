@@ -12,6 +12,7 @@
   register: docker_key_info
   changed_when: false
   failed_when: "'9DC858229FC7DD38854AE2D88D81803C0EBFCD88' not in docker_key_info.stdout"
+  when: not ansible_check_mode
   tags: [fastlane, runtime]
 
 - name: Add Docker apt repository
@@ -168,4 +169,5 @@
   register: docker_info
   changed_when: false
   failed_when: "'rootless' not in docker_info.stdout"
+  when: not ansible_check_mode
   tags: [fastlane, runtime]
