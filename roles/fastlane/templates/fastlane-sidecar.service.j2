@@ -1,0 +1,35 @@
+[Unit]
+Description=FastLane MEV Sidecar (rootless)
+Requires=docker.service
+After=docker.service network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=120
+TimeoutStopSec=30
+
+ExecStartPre=-/usr/bin/docker rm -f fastlane-sidecar
+
+ExecStart=/usr/bin/docker run --rm --name fastlane-sidecar \
+  --read-only \
+  --tmpfs /tmp:rw,size=64m \
+  --cap-drop=ALL \
+  --security-opt=no-new-privileges \
+  --pids-limit=512 \
+  --memory={{ fastlane_memory_limit }} \
+{% if fastlane_cpu_pinning | length > 0 and fastlane_cpu_pinning_supported %}
+  --cpuset-cpus={{ fastlane_cpu_pinning }} \
+{% endif %}
+  --env-file %h/fastlane/.env \
+  -v {{ monad_mempool_socket }}:/run/monad/mempool.sock:{{ fastlane_socket_mode }} \
+  -p 127.0.0.1:{{ fastlane_sidecar_port }}:{{ fastlane_sidecar_port }} \
+  {{ fastlane_sidecar_image }}@{{ fastlane_sidecar_image_digest }}
+
+ExecStop=/usr/bin/docker stop fastlane-sidecar
+
+[Install]
+WantedBy=default.target

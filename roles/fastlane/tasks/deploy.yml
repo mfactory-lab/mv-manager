@@ -1,0 +1,50 @@
+---
+- name: Ensure fastlane home exists
+  file:
+    path: "{{ fastlane_home }}"
+    state: directory
+    owner: "{{ monad_user }}"
+    group: "{{ monad_group }}"
+    mode: '0750'
+  tags: [fastlane, deploy]
+
+- name: Render fastlane env file
+  template:
+    src: fastlane.env.j2
+    dest: "{{ fastlane_home }}/.env"
+    owner: "{{ monad_user }}"
+    group: "{{ monad_group }}"
+    mode: '0640'
+  notify: Restart fastlane sidecar
+  tags: [fastlane, deploy, config]
+
+- name: Render user systemd unit
+  template:
+    src: fastlane-sidecar.service.j2
+    dest: "{{ monad_home }}/.config/systemd/user/fastlane-sidecar.service"
+    owner: "{{ monad_user }}"
+    group: "{{ monad_group }}"
+    mode: '0640'
+  notify:
+    - Reload user systemd
+    - Restart fastlane sidecar
+  tags: [fastlane, deploy, config]
+
+- name: Pull sidecar image by digest
+  become_user: "{{ monad_user }}"
+  environment: "{{ fastlane_user_env }}"
+  command: "docker pull {{ fastlane_sidecar_image }}@{{ fastlane_sidecar_image_digest }}"
+  register: docker_pull
+  changed_when: "'Downloaded newer image' in docker_pull.stdout or 'Pull complete' in docker_pull.stdout"
+  tags: [fastlane, deploy]
+
+- name: Flush handlers before enabling unit
+  meta: flush_handlers
+  tags: [fastlane, deploy]
+
+- name: Enable and start fastlane-sidecar user unit
+  become_user: "{{ monad_user }}"
+  environment: "{{ fastlane_user_env }}"
+  command: systemctl --user enable --now fastlane-sidecar.service
+  changed_when: false
+  tags: [fastlane, deploy]
