@@ -39,6 +39,7 @@
       - fuse-overlayfs
       - dbus-user-session
     state: present
+  when: not ansible_check_mode
   tags: [fastlane, runtime]
 
 - name: Detect existing /etc/subuid entry for monad
@@ -160,6 +161,7 @@
   wait_for:
     path: "/run/user/{{ monad_uid }}/docker.sock"
     timeout: 30
+  when: not ansible_check_mode
   tags: [fastlane, runtime]
 
 - name: Verify rootless docker
