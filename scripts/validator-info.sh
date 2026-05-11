@@ -470,7 +470,7 @@ if [ -n "$VAL_ID" ] && [ "$network" = "mainnet" ]; then
     }
 
     hex_to_mon() {
-        python3 -c "import sys; v=int(sys.argv[1],16); print(f'{v/1e18:.4f}')" "$1" 2>/dev/null || echo "?"
+        python3 -c "import sys; v=int(sys.argv[1],16); print(f'{v/1e18:,.4f}')" "$1" 2>/dev/null || echo "?"
     }
 
     # getValidatorStats returns: bool isActive, address coinbase, uint64 lastEpoch,
@@ -479,11 +479,24 @@ if [ -n "$VAL_ID" ] && [ "$network" = "mainnet" ]; then
     stats_raw=$(eth_call "0xd3b9fd72")
     stats_raw=${stats_raw#0x}
     if [ -n "$stats_raw" ] && [ ${#stats_raw} -ge 512 ]; then
+        is_active_hex="${stats_raw:0:64}"
+        last_epoch_hex="${stats_raw:128:64}"
         target_stake=$(hex_to_mon "${stats_raw:192:64}")
+        payable_last=$(hex_to_mon "${stats_raw:256:64}")
+        earned_last=$(hex_to_mon "${stats_raw:320:64}")
+        payable_current=$(hex_to_mon "${stats_raw:384:64}")
         earned_current=$(hex_to_mon "${stats_raw:448:64}")
+        last_epoch=$((16#${last_epoch_hex}))
+        if [ "$((16#${is_active_hex}))" -eq 1 ]; then
+            active_badge="${G}●${N} active"
+        else
+            active_badge="${R}●${N} inactive"
+        fi
         echo ""
-        printf "$(lbl 'shMon Rev') ${Y}${B}%s MON${N}\n" "$earned_current"
-        printf "$(lbl 'shMon Target') ${C}%s MON${N}\n" "$target_stake"
+        printf "$(lbl 'shMon') %b ${D}· epoch %s${N}\n" "$active_badge" "$last_epoch"
+        printf "$(lbl 'Claimable') ${Y}${B}%s MON${N} ${D}(last %s)${N}\n" "$payable_current" "$payable_last"
+        printf "$(lbl 'Revenue') ${Y}%s MON${N} ${D}(last %s)${N}\n" "$earned_current" "$earned_last"
+        printf "$(lbl 'Target') ${C}%s MON${N}\n" "$target_stake"
     fi
 
     # getValidatorPendingEscrow returns 4 × uint120: last/current pending staking/unstaking
@@ -492,7 +505,17 @@ if [ -n "$VAL_ID" ] && [ "$network" = "mainnet" ]; then
     if [ -n "$esc_raw" ] && [ ${#esc_raw} -ge 256 ]; then
         cur_stake_in=$(hex_to_mon "${esc_raw:128:64}")
         cur_stake_out=$(hex_to_mon "${esc_raw:192:64}")
-        printf "$(lbl 'shMon Pending') ${G}+%s${N} / ${R}-%s${N} MON\n" "$cur_stake_in" "$cur_stake_out"
+        in_zero=$(python3 -c "import sys; print('1' if float(sys.argv[1].replace(',',''))==0 else '0')" "$cur_stake_in" 2>/dev/null || echo "0")
+        out_zero=$(python3 -c "import sys; print('1' if float(sys.argv[1].replace(',',''))==0 else '0')" "$cur_stake_out" 2>/dev/null || echo "0")
+        if [ "$in_zero" = "1" ] && [ "$out_zero" = "1" ]; then
+            :
+        elif [ "$out_zero" = "1" ]; then
+            printf "$(lbl 'Pending') ${G}+%s MON${N} ${D}staking${N}\n" "$cur_stake_in"
+        elif [ "$in_zero" = "1" ]; then
+            printf "$(lbl 'Pending') ${R}-%s MON${N} ${D}unstaking${N}\n" "$cur_stake_out"
+        else
+            printf "$(lbl 'Pending') ${G}+%s${N} / ${R}-%s${N} MON\n" "$cur_stake_in" "$cur_stake_out"
+        fi
     fi
 fi
 
