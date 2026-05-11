@@ -56,3 +56,6 @@ inventory/*.yml
 # Misc
 .claude
 CLAUDE.md
+
+# Local-only design docs and implementation plans (never commit)
+docs/superpowers/
