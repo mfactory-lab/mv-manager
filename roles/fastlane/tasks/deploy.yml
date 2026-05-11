@@ -8,16 +8,6 @@
     mode: '0750'
   tags: [fastlane, deploy]
 
-- name: Render fastlane env file
-  template:
-    src: fastlane.env.j2
-    dest: "{{ fastlane_home }}/.env"
-    owner: "{{ monad_user }}"
-    group: "{{ monad_group }}"
-    mode: '0640'
-  notify: Restart fastlane sidecar
-  tags: [fastlane, deploy, config]
-
 - name: Render user systemd unit
   template:
     src: fastlane-sidecar.service.j2

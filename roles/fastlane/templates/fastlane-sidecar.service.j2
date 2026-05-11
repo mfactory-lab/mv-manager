@@ -24,10 +24,12 @@ ExecStart=/usr/bin/docker run --rm --name fastlane-sidecar \
 {% if fastlane_cpu_pinning | length > 0 and fastlane_cpu_pinning_supported %}
   --cpuset-cpus={{ fastlane_cpu_pinning }} \
 {% endif %}
-  --env-file %h/fastlane/.env \
-  -v {{ monad_mempool_socket }}:/run/monad/mempool.sock:{{ fastlane_socket_mode }} \
+  -v {{ monad_mempool_socket }}:/home/monad/monad-bft/mempool.sock:{{ fastlane_socket_mode }} \
   -p 127.0.0.1:{{ fastlane_sidecar_port }}:{{ fastlane_sidecar_port }} \
-  {{ fastlane_sidecar_image }}@{{ fastlane_sidecar_image_digest }}
+  {{ fastlane_sidecar_image }}@{{ fastlane_sidecar_image_digest }} \
+  -network {{ monad_network_name }} \
+  -log-level {{ fastlane_log_level }} \
+  -monitoring-port {{ fastlane_sidecar_port }}
 
 ExecStop=/usr/bin/docker stop fastlane-sidecar
 

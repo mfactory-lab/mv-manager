@@ -22,10 +22,10 @@
     - name: Verify fastlane-sidecar container is running
       become_user: "{{ monad_user }}"
       environment: "{{ fastlane_user_env }}"
-      command: docker ps --filter name=^fastlane-sidecar$ --filter status=running --format '{{ "{{" }}.Names{{ "}}" }}'
+      command: docker inspect fastlane-sidecar --format '{{ "{{" }}.State.Status{{ "}}" }}'
       register: container_running
       changed_when: false
-      failed_when: (container_running.stdout | default('') | trim) != 'fastlane-sidecar'
+      failed_when: (container_running.stdout | default('') | trim) != 'running'
 
     - name: Wait for sidecar health endpoint
       uri:
