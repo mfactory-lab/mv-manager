@@ -1,0 +1,133 @@
+---
+- name: Install Docker apt key
+  get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /usr/share/keyrings/docker-archive-keyring.asc
+    mode: '0644'
+    force: false
+  tags: [fastlane, runtime]
+
+- name: Verify Docker apt key fingerprint
+  command: gpg --show-keys --with-fingerprint --with-colons /usr/share/keyrings/docker-archive-keyring.asc
+  register: docker_key_info
+  changed_when: false
+  failed_when: "'9DC858229FC7DD38854AE2D88D81803C0EBFCD88' not in docker_key_info.stdout"
+  tags: [fastlane, runtime]
+
+- name: Add Docker apt repository
+  copy:
+    content: "deb [signed-by=/usr/share/keyrings/docker-archive-keyring.asc] https://download.docker.com/linux/ubuntu {{ ansible_facts['distribution_release'] }} stable\n"
+    dest: /etc/apt/sources.list.d/docker.list
+    mode: '0644'
+  register: docker_repo
+  tags: [fastlane, runtime]
+
+- name: Update apt cache when repo changes
+  apt:
+    update_cache: yes
+  when: docker_repo.changed
+  tags: [fastlane, runtime]
+
+- name: Install Docker and rootless dependencies
+  apt:
+    name:
+      - docker-ce
+      - docker-ce-rootless-extras
+      - uidmap
+      - slirp4netns
+      - fuse-overlayfs
+      - dbus-user-session
+    state: present
+  tags: [fastlane, runtime]
+
+- name: Disable system-wide docker.service
+  systemd:
+    name: docker.service
+    enabled: no
+    state: stopped
+  failed_when: false
+  tags: [fastlane, runtime]
+
+- name: Disable system-wide docker.socket
+  systemd:
+    name: docker.socket
+    enabled: no
+    state: stopped
+  failed_when: false
+  tags: [fastlane, runtime]
+
+- name: Enable linger for monad user
+  command: "loginctl enable-linger {{ monad_user }}"
+  args:
+    creates: "/var/lib/systemd/linger/{{ monad_user }}"
+  tags: [fastlane, runtime]
+
+- name: Wait for user runtime dir
+  wait_for:
+    path: "/run/user/{{ monad_uid }}"
+    timeout: 30
+  tags: [fastlane, runtime]
+
+- name: Create docker config directory
+  file:
+    path: "{{ monad_home }}/.config/docker"
+    state: directory
+    owner: "{{ monad_user }}"
+    group: "{{ monad_group }}"
+    mode: '0750'
+  tags: [fastlane, runtime]
+
+- name: Render rootless docker daemon.json
+  template:
+    src: docker-daemon.json.j2
+    dest: "{{ monad_home }}/.config/docker/daemon.json"
+    owner: "{{ monad_user }}"
+    group: "{{ monad_group }}"
+    mode: '0640'
+  tags: [fastlane, runtime]
+
+- name: Create user systemd directory
+  file:
+    path: "{{ monad_home }}/.config/systemd/user"
+    state: directory
+    owner: "{{ monad_user }}"
+    group: "{{ monad_group }}"
+    mode: '0750'
+  tags: [fastlane, runtime]
+
+- name: Install rootless docker user units
+  become_user: "{{ monad_user }}"
+  environment: "{{ fastlane_user_env }}"
+  command: dockerd-rootless-setuptool.sh install
+  args:
+    creates: "{{ monad_home }}/.config/systemd/user/docker.service"
+  tags: [fastlane, runtime]
+
+- name: Reload user systemd
+  become_user: "{{ monad_user }}"
+  environment: "{{ fastlane_user_env }}"
+  command: systemctl --user daemon-reload
+  changed_when: false
+  tags: [fastlane, runtime]
+
+- name: Enable and start rootless docker
+  become_user: "{{ monad_user }}"
+  environment: "{{ fastlane_user_env }}"
+  command: systemctl --user enable --now docker.service
+  changed_when: false
+  tags: [fastlane, runtime]
+
+- name: Wait for rootless docker socket
+  wait_for:
+    path: "/run/user/{{ monad_uid }}/docker.sock"
+    timeout: 30
+  tags: [fastlane, runtime]
+
+- name: Verify rootless docker
+  become_user: "{{ monad_user }}"
+  environment: "{{ fastlane_user_env }}"
+  command: docker info -f '{{ "{{" }}.SecurityOptions{{ "}}" }}'
+  register: docker_info
+  changed_when: false
+  failed_when: "'rootless' not in docker_info.stdout"
+  tags: [fastlane, runtime]
