@@ -38,6 +38,13 @@
   changed_when: "'Downloaded newer image' in docker_pull.stdout or 'Pull complete' in docker_pull.stdout"
   tags: [fastlane, deploy]
 
+- name: Wait for mempool socket to exist
+  wait_for:
+    path: "{{ monad_mempool_socket }}"
+    state: present
+    timeout: 60
+  tags: [fastlane, deploy]
+
 - name: Flush handlers before enabling unit
   meta: flush_handlers
   tags: [fastlane, deploy]
