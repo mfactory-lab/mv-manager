@@ -1,0 +1,77 @@
+---
+- name: Assert supported OS
+  assert:
+    that:
+      - ansible_facts['os_family'] == 'Debian'
+      - ansible_facts['distribution_version'] in ['22.04', '24.04']
+    fail_msg: "Rootless Docker setup supports Ubuntu 22.04 / 24.04 only (got {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }})"
+  tags: [fastlane, preflight]
+
+- name: Assert cgroup v2 is mounted
+  command: stat -fc %T /sys/fs/cgroup
+  register: cgroup_fstype
+  changed_when: false
+  failed_when: cgroup_fstype.stdout.strip() != 'cgroup2fs'
+  tags: [fastlane, preflight]
+
+- name: Read kernel.unprivileged_userns_clone
+  command: sysctl -n kernel.unprivileged_userns_clone
+  register: userns_clone
+  changed_when: false
+  failed_when: userns_clone.stdout.strip() != '1'
+  tags: [fastlane, preflight]
+
+- name: Resolve monad UID
+  command: "getent passwd {{ monad_user }}"
+  register: monad_passwd
+  changed_when: false
+  tags: [fastlane, preflight]
+
+- name: Set monad_uid and user-env facts
+  set_fact:
+    monad_uid: "{{ monad_passwd.stdout.split(':')[2] }}"
+    fastlane_user_env:
+      XDG_RUNTIME_DIR: "/run/user/{{ monad_passwd.stdout.split(':')[2] }}"
+      DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ monad_passwd.stdout.split(':')[2] }}/bus"
+  tags: [fastlane, preflight]
+
+- name: Assert subuid/subgid entries exist for monad
+  command: "getent {{ item }} {{ monad_user }}"
+  register: subid_check
+  changed_when: false
+  failed_when: subid_check.rc != 0
+  loop:
+    - subuid
+    - subgid
+  tags: [fastlane, preflight]
+
+- name: Assert socket directory exists and is owned by monad
+  stat:
+    path: "{{ monad_socket_dir }}"
+  register: socket_dir
+  failed_when:
+    - not socket_dir.stat.exists or socket_dir.stat.pw_name != monad_user
+  tags: [fastlane, preflight]
+
+- name: Probe cgroup CPU delegation (only if pinning requested)
+  become_user: "{{ monad_user }}"
+  environment: "{{ fastlane_user_env }}"
+  command: systemd-run --user --scope -q -p AllowedCPUs=0 /bin/true
+  register: cpu_delegation
+  changed_when: false
+  failed_when: false
+  when: fastlane_cpu_pinning | length > 0
+  tags: [fastlane, preflight]
+
+- name: Record CPU pinning support fact
+  set_fact:
+    fastlane_cpu_pinning_supported: "{{ (cpu_delegation.rc | default(1)) == 0 }}"
+  tags: [fastlane, preflight]
+
+- name: Warn if CPU pinning requested but unsupported
+  debug:
+    msg: "fastlane_cpu_pinning='{{ fastlane_cpu_pinning }}' requested but cgroup CPU delegation is not available for user {{ monad_user }}. The --cpuset-cpus flag will be omitted."
+  when:
+    - fastlane_cpu_pinning | length > 0
+    - not fastlane_cpu_pinning_supported
+  tags: [fastlane, preflight]
