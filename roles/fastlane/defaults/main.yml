@@ -1,0 +1,17 @@
+---
+# Role enable + image (pinned by digest)
+fastlane_enabled: false
+fastlane_sidecar_version: "0.0.16"
+fastlane_sidecar_image: "ghcr.io/fastlane-labs/fastlane-sidecar"
+fastlane_sidecar_image_digest: "sha256:f386d50c6538c4e3482fcb796f12165ca1dba4efb6afcb8304037273531bac7f"
+
+# Runtime
+fastlane_sidecar_port: 8765
+fastlane_memory_limit: "2g"
+fastlane_cpu_pinning: ""
+fastlane_log_level: "info"
+fastlane_socket_mode: "ro"
+fastlane_home: "{{ monad_home }}/fastlane"
+
+# Migration toggle (delete this and legacy_cleanup.yml after the fleet has migrated)
+fastlane_legacy_cleanup: true
