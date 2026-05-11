@@ -40,6 +40,42 @@
     state: present
   tags: [fastlane, runtime]
 
+- name: Check subuid entry for monad
+  command: "getent subuid {{ monad_user }}"
+  register: subuid_entry
+  changed_when: false
+  failed_when: false
+  tags: [fastlane, runtime]
+
+- name: Allocate subuid range for monad
+  lineinfile:
+    path: /etc/subuid
+    line: "{{ monad_user }}:{{ fastlane_subid_start }}:{{ fastlane_subid_count }}"
+    create: yes
+    owner: root
+    group: root
+    mode: '0644'
+  when: subuid_entry.rc != 0
+  tags: [fastlane, runtime]
+
+- name: Check subgid entry for monad
+  command: "getent subgid {{ monad_user }}"
+  register: subgid_entry
+  changed_when: false
+  failed_when: false
+  tags: [fastlane, runtime]
+
+- name: Allocate subgid range for monad
+  lineinfile:
+    path: /etc/subgid
+    line: "{{ monad_user }}:{{ fastlane_subid_start }}:{{ fastlane_subid_count }}"
+    create: yes
+    owner: root
+    group: root
+    mode: '0644'
+  when: subgid_entry.rc != 0
+  tags: [fastlane, runtime]
+
 - name: Disable system-wide docker.service
   systemd:
     name: docker.service

@@ -35,16 +35,6 @@
       DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ monad_passwd.stdout.split(':')[2] }}/bus"
   tags: [fastlane, preflight]
 
-- name: Assert subuid/subgid entries exist for monad
-  command: "getent {{ item }} {{ monad_user }}"
-  register: subid_check
-  changed_when: false
-  failed_when: subid_check.rc != 0
-  loop:
-    - subuid
-    - subgid
-  tags: [fastlane, preflight]
-
 - name: Assert socket directory exists and is owned by monad
   stat:
     path: "{{ monad_socket_dir }}"

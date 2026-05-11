@@ -13,5 +13,12 @@ fastlane_log_level: "info"
 fastlane_socket_mode: "ro"
 fastlane_home: "{{ monad_home }}/fastlane"
 
+# Rootless user-namespace range allocated to monad if /etc/subuid + /etc/subgid
+# have no entry for the user. 65536 IDs starting at 100000 matches the default
+# range that `useradd` would have assigned had `uidmap` been installed at the
+# time monad was created.
+fastlane_subid_start: 100000
+fastlane_subid_count: 65536
+
 # Migration toggle (delete this and legacy_cleanup.yml after the fleet has migrated)
 fastlane_legacy_cleanup: true
