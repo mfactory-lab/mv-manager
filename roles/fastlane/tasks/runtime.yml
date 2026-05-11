@@ -40,11 +40,12 @@
     state: present
   tags: [fastlane, runtime]
 
-- name: Check subuid entry for monad
-  command: "getent subuid {{ monad_user }}"
+- name: Detect existing /etc/subuid entry for monad
+  command: "grep -q '^{{ monad_user }}:' /etc/subuid"
   register: subuid_entry
   changed_when: false
   failed_when: false
+  check_mode: no
   tags: [fastlane, runtime]
 
 - name: Allocate subuid range for monad
@@ -58,11 +59,12 @@
   when: subuid_entry.rc != 0
   tags: [fastlane, runtime]
 
-- name: Check subgid entry for monad
-  command: "getent subgid {{ monad_user }}"
+- name: Detect existing /etc/subgid entry for monad
+  command: "grep -q '^{{ monad_user }}:' /etc/subgid"
   register: subgid_entry
   changed_when: false
   failed_when: false
+  check_mode: no
   tags: [fastlane, runtime]
 
 - name: Allocate subgid range for monad
