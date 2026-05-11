@@ -1,9 +1,12 @@
 ---
-- name: Reload systemd
-  systemd:
-    daemon_reload: yes
+- name: Reload user systemd
+  become_user: "{{ monad_user }}"
+  environment: "{{ fastlane_user_env }}"
+  command: systemctl --user daemon-reload
+  changed_when: false
 
 - name: Restart fastlane sidecar
-  systemd:
-    name: fastlane-sidecar
-    state: restarted
+  become_user: "{{ monad_user }}"
+  environment: "{{ fastlane_user_env }}"
+  command: systemctl --user restart fastlane-sidecar.service
+  changed_when: false
