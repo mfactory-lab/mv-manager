@@ -105,8 +105,14 @@ echo "╰${border}╯"
 cons=$(systemctl is-active monad-consensus 2>/dev/null || echo "inactive")
 exec_s=$(systemctl is-active "$EXEC_SVC" 2>/dev/null || echo "inactive")
 rpc_s=$(systemctl is-active monad-rpc 2>/dev/null || echo "inactive")
-sc_s=$(systemctl is-active fastlane-sidecar 2>/dev/null || echo "inactive")
-sc_exists=$(systemctl cat fastlane-sidecar &>/dev/null && echo "yes" || echo "")
+MONAD_UID=$(id -u monad 2>/dev/null || echo "")
+if [ -n "$MONAD_UID" ] && sudo -u monad XDG_RUNTIME_DIR=/run/user/$MONAD_UID systemctl --user cat fastlane-sidecar &>/dev/null; then
+    sc_s=$(sudo -u monad XDG_RUNTIME_DIR=/run/user/$MONAD_UID systemctl --user is-active fastlane-sidecar 2>/dev/null || echo "inactive")
+    sc_exists="yes"
+else
+    sc_s=$(systemctl is-active fastlane-sidecar 2>/dev/null || echo "inactive")
+    sc_exists=$(systemctl cat fastlane-sidecar &>/dev/null && echo "yes" || echo "")
+fi
 [ "$cons" = "active" ] && cs="${G}●${N}" || cs="${R}●${N}"
 [ "$exec_s" = "active" ] && es="${G}●${N}" || es="${R}●${N}"
 [ "$rpc_s" = "active" ] && rs="${G}●${N}" || rs="${R}●${N}"
