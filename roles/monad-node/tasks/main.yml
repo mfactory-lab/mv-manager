@@ -316,13 +316,58 @@
 # =============================================================================
 # MONAD-CRUFT COMPATIBILITY
 # =============================================================================
-- name: Remove legacy self-referential monad-bft symlink
+# Upstream /opt/monad/scripts/clear-old-artifacts.sh (shipped by the monad deb)
+# hardcodes paths under /home/monad/monad-bft/{ledger,config}/. We install data
+# directly under {{ monad_home }}/{data,config}/, so we bridge with symlinks.
+# Without the monad-bft/ledger AND monad-bft/config symlinks, the cleanup gate
+# in clear-old-artifacts.sh fails its find on monad-bft/ledger/, logs
+# "No new files detected. Skipping deletion", and silently does nothing.
+# Result: forkpoint backups (one per block) accumulate until ext4 htree
+# overflows the directory hash index and creat() returns ENOSPC even with
+# terabytes of free space. Incident 2026-05-16, pg-mainnet, 10.83M files.
+- name: Check current state of monad-bft compat path
+  stat:
+    path: "{{ monad_home }}/monad-bft"
+  register: monad_bft_compat
+  tags: [monad, config]
+
+- name: Remove legacy self-referential monad-bft symlink (pre-cruft-fix layout)
   file:
     path: "{{ monad_home }}/monad-bft"
     state: absent
+  when: monad_bft_compat.stat.exists and monad_bft_compat.stat.islnk
   tags: [monad, config]
 
-- name: Create ledger symlink for monad-cruft compatibility
+- name: Ensure monad-bft compat parent directory exists for cruft hardcoded paths
+  file:
+    path: "{{ monad_home }}/monad-bft"
+    state: directory
+    owner: "{{ monad_user }}"
+    group: "{{ monad_group }}"
+    mode: '0755'
+  tags: [monad, config]
+
+- name: Create monad-bft/ledger symlink for monad-cruft compatibility
+  file:
+    src: "{{ monad_data_dir }}"
+    dest: "{{ monad_home }}/monad-bft/ledger"
+    state: link
+    owner: "{{ monad_user }}"
+    group: "{{ monad_group }}"
+    force: yes
+  tags: [monad, config]
+
+- name: Create monad-bft/config symlink for monad-cruft compatibility
+  file:
+    src: "{{ monad_config_dir }}"
+    dest: "{{ monad_home }}/monad-bft/config"
+    state: link
+    owner: "{{ monad_user }}"
+    group: "{{ monad_group }}"
+    force: yes
+  tags: [monad, config]
+
+- name: Create legacy ledger symlink (kept for older tooling that checks bare path)
   file:
     src: "{{ monad_data_dir }}"
     dest: "{{ monad_home }}/ledger"
