@@ -97,3 +97,31 @@
       until: rpc_check.status == 200
       retries: 30
       delay: 10
+
+    - name: Settle window before consensus liveness probe
+      pause:
+        seconds: 30
+
+    - name: Consensus restart counter (post-upgrade liveness gate)
+      shell: |
+        systemctl show {{ service_identifier }} -p NRestarts --value
+      register: nrestarts
+      changed_when: false
+
+    - name: Fail if consensus is in a restart loop
+      fail:
+        msg: "{{ service_identifier }} restarted {{ nrestarts.stdout | trim }} times since boot — likely panic loop. Aborting rolling upgrade."
+      when: (nrestarts.stdout | trim | int) > 3
+
+    - name: Scan recent consensus journal for fatal patterns
+      shell: |
+        journalctl -u {{ service_identifier }} --since "5 minutes ago" --no-pager \
+          | grep -E "high qc too far ahead|block tree root|panicked at .*monad-consensus" \
+          || true
+      register: panic_scan
+      changed_when: false
+
+    - name: Fail if fatal consensus pattern found
+      fail:
+        msg: "Fatal consensus pattern in journal after upgrade — aborting rollout. Matches:\n{{ panic_scan.stdout }}"
+      when: panic_scan.stdout | trim | length > 0

@@ -157,6 +157,25 @@
         state: absent
       tags: [snapshot]
 
+    - name: Assert monad-execution binary is installed before starting services
+      command: which monad-execution
+      register: which_exec
+      changed_when: false
+      failed_when: which_exec.rc != 0
+      tags: [snapshot]
+
+    - name: Assert no other process is holding triedb open
+      shell: |
+        if command -v fuser >/dev/null 2>&1; then
+          fuser {{ triedb_config.path }} 2>/dev/null && exit 1 || exit 0
+        else
+          lsof {{ triedb_config.path }} 2>/dev/null && exit 1 || exit 0
+        fi
+      register: triedb_holders
+      changed_when: false
+      failed_when: triedb_holders.rc != 0
+      tags: [snapshot]
+
     - name: Start monad services
       systemd:
         name: "{{ item }}"

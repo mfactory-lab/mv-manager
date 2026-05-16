@@ -71,6 +71,16 @@ status: ## Show validator status [ENV=] [NODE=]
 health: ## Run health checks
 	ansible-playbook $(A) playbooks/maintenance.yml --tags health
 
+panic-check: ## Scan recent consensus journals for panic patterns [NODE=]
+	@ansible $(A) validators:fullnodes -m shell -a \
+	  'set -e; \
+	   n=$$(systemctl show monad-consensus -p NRestarts --value); \
+	   p=$$(journalctl -u monad-consensus --since "10 minutes ago" --no-pager \
+	        | grep -cE "high qc too far ahead|block tree root|panicked at .*monad-consensus" || true); \
+	   echo "NRestarts=$$n PanicMatches=$$p"; \
+	   [ "$$n" -le 3 ] && [ "$$p" -eq 0 ]' \
+	  2>/dev/null | ./scripts/colorize-logs.sh
+
 logs: ## Tail logs [SVC=consensus|execution|rpc] [LINES=50] [NODE=]
 	$(eval SVC := $(or $(SVC),consensus))
 	$(eval L := $(or $(LINES),50))
@@ -206,4 +216,4 @@ help:
 	@echo ""
 
 .DEFAULT_GOAL := help
-.PHONY: bootstrap deploy snapshot execution rpc register upgrade observability fastlane sidecar-health status health logs watch restart stop start commission claim compound auto-compound backup-config backup-keys migrate recovery diagnose ping grafana hardware speedtest ssh check vault-edit vault-encrypt vault-decrypt help
+.PHONY: bootstrap deploy snapshot execution rpc register upgrade observability fastlane sidecar-health status health panic-check logs watch restart stop start commission claim compound auto-compound backup-config backup-keys migrate recovery diagnose ping grafana hardware speedtest ssh check vault-edit vault-encrypt vault-decrypt help
