@@ -192,6 +192,17 @@ else:
     echo "# TYPE monad_proposals_total gauge"
     proposals=$(echo "$log_tail" | grep -c "proposal stats" || true)
     echo "monad_proposals_total ${proposals:-0}"
+
+    echo "# HELP monad_consensus_panic_count Fatal consensus panic patterns in journal (last 10m)"
+    echo "# TYPE monad_consensus_panic_count gauge"
+    panic_count=$(journalctl -u {{ service_identifier }} --since "10 minutes ago" --no-pager 2>/dev/null \
+        | grep -cE "high qc too far ahead|block tree root|panicked at .*monad-consensus" || true)
+    echo "monad_consensus_panic_count ${panic_count:-0}"
+
+    echo "# HELP monad_consensus_nrestarts Cumulative consensus service restarts since boot"
+    echo "# TYPE monad_consensus_nrestarts gauge"
+    nrestarts=$(systemctl show {{ service_identifier }} -p NRestarts --value 2>/dev/null || echo 0)
+    echo "monad_consensus_nrestarts ${nrestarts:-0}"
 }
 
 collect > "$TMP_FILE"

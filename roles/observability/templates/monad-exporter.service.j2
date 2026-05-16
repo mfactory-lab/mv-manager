@@ -5,6 +5,7 @@ After=network.target
 [Service]
 Type=oneshot
 User={{ monad_user }}
+SupplementaryGroups=systemd-journal
 ExecStart={{ monad_bin_dir }}/monad-exporter.sh
 TimeoutSec=30
 Nice=19
