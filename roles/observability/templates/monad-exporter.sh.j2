@@ -6,6 +6,7 @@ CONTRACT="0x0000000000000000000000000000000000001000"
 VALIDATOR_ID="{{ validator_id | default('') }}"
 AUTH_ADDRESS="{{ auth_address | default('') }}"
 LOG_FILE="{{ monad_logs_dir }}/{{ service_identifier }}.log"
+SERVICE_IDENTIFIER="{{ service_identifier }}"
 PROM_FILE="/var/lib/node_exporter/textfile/monad.prom"
 TMP_FILE="${PROM_FILE}.$$"
 {% raw %}
@@ -193,15 +194,14 @@ else:
     proposals=$(echo "$log_tail" | grep -c "proposal stats" || true)
     echo "monad_proposals_total ${proposals:-0}"
 
-    echo "# HELP monad_consensus_panic_count Fatal consensus panic patterns in journal (last 10m)"
+    echo "# HELP monad_consensus_panic_count Fatal consensus panic patterns in log file (last 5000 lines)"
     echo "# TYPE monad_consensus_panic_count gauge"
-    panic_count=$(journalctl -u {{ service_identifier }} --since "10 minutes ago" --no-pager 2>/dev/null \
-        | grep -cE "high qc too far ahead|block tree root|panicked at .*monad-consensus" || true)
+    panic_count=$(echo "$log_tail" | grep -cE "high qc too far ahead|block tree root|panicked at .*monad-consensus" || true)
     echo "monad_consensus_panic_count ${panic_count:-0}"
 
     echo "# HELP monad_consensus_nrestarts Cumulative consensus service restarts since boot"
     echo "# TYPE monad_consensus_nrestarts gauge"
-    nrestarts=$(systemctl show {{ service_identifier }} -p NRestarts --value 2>/dev/null || echo 0)
+    nrestarts=$(systemctl show "$SERVICE_IDENTIFIER" -p NRestarts --value 2>/dev/null || echo 0)
     echo "monad_consensus_nrestarts ${nrestarts:-0}"
 }
 
