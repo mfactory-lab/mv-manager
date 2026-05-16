@@ -73,12 +73,11 @@ health: ## Run health checks
 
 panic-check: ## Scan recent consensus journals for panic patterns [NODE=]
 	@bash -o pipefail -c 'ansible $(A) validators:fullnodes -m shell -a \
-	  "set -e; \
-	   n=\$$(systemctl show monad-consensus -p NRestarts --value); \
+	  "n=\$$(systemctl show monad-consensus -p NRestarts --value); \
 	   p=\$$(journalctl -u monad-consensus --since \"10 minutes ago\" --no-pager \
 	        | grep -cE \"high qc too far ahead|block tree root|panicked at .*monad-consensus\" || true); \
-	   echo \"NRestarts=\$$n PanicMatches=\$$p\"; \
-	   [ \"\$$n\" -le 3 ] && [ \"\$$p\" -eq 0 ]" \
+	   echo \"NRestarts=\$$n (cumulative, informational)  PanicMatches=\$$p (last 10m)\"; \
+	   [ \"\$$p\" -eq 0 ]" \
 	  2>/dev/null | ./scripts/colorize-logs.sh'
 
 logs: ## Tail logs [SVC=consensus|execution|rpc] [LINES=50] [NODE=]
