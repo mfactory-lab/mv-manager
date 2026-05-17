@@ -16,7 +16,7 @@
 
     - name: Fail if user unit did not reach active state
       fail:
-        msg: "fastlane-sidecar.service user unit state is '{{ unit_active.stdout | default('') | trim }}' (rc={{ unit_active.rc }}). Health gate aborted; legacy cleanup will not run."
+        msg: "fastlane-sidecar.service user unit state is '{{ unit_active.stdout | default('') | trim }}' (rc={{ unit_active.rc }}). Health gate aborted."
       when: (unit_active.stdout | default('') | trim) != 'active'
 
     - name: Verify fastlane-sidecar container is running

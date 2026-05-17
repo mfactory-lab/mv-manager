@@ -3,5 +3,3 @@
 - import_tasks: runtime.yml
 - import_tasks: deploy.yml
 - import_tasks: health.yml
-- import_tasks: legacy_cleanup.yml
-  when: fastlane_legacy_cleanup | bool

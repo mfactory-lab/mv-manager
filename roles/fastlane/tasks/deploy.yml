@@ -36,15 +36,6 @@
     timeout: 60
   tags: [fastlane, deploy]
 
-- name: Stop legacy system fastlane-sidecar so the rootless container can bind 127.0.0.1:{{ fastlane_sidecar_port }}
-  become: yes
-  systemd:
-    name: fastlane-sidecar.service
-    state: stopped
-    scope: system
-  failed_when: false
-  tags: [fastlane, deploy]
-
 - name: Flush handlers before enabling unit
   meta: flush_handlers
   tags: [fastlane, deploy]

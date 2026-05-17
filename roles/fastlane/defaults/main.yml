@@ -19,6 +19,3 @@ fastlane_home: "{{ monad_home }}/fastlane"
 # time monad was created.
 fastlane_subid_start: 100000
 fastlane_subid_count: 65536
-
-# Migration toggle (delete this and legacy_cleanup.yml after the fleet has migrated)
-fastlane_legacy_cleanup: true
