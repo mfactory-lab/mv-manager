@@ -116,7 +116,24 @@ fi
 [ "$cons" = "active" ] && cs="${G}●${N}" || cs="${R}●${N}"
 [ "$exec_s" = "active" ] && es="${G}●${N}" || es="${R}●${N}"
 [ "$rpc_s" = "active" ] && rs="${G}●${N}" || rs="${R}●${N}"
-[ "$sc_s" = "active" ] && scs="${G}●${N}" || scs="${R}●${N}"
+
+# Fastlane: liveness is necessary but not sufficient. The container can sit "active"
+# forever spinning on connection-refused to a stale bind-mount inode (incident
+# 2026-05-14, 3-day silent MEV outage). Probe /health and downgrade to yellow if
+# tx_received is stale, even though systemd reports active.
+scs="${R}●${N}"
+if [ "$sc_s" = "active" ]; then
+    scs="${G}●${N}"
+    sc_probe=$(curl -s --connect-timeout 2 http://localhost:8765/health 2>/dev/null)
+    if [ -n "$sc_probe" ]; then
+        sc_probe_last=$(echo "$sc_probe" | jq -r '.last_received_at // empty' 2>/dev/null)
+        sc_probe_rx=$(echo "$sc_probe" | jq -r '.tx_received // 0' 2>/dev/null)
+        if [ -n "$sc_probe_last" ] && [ "${sc_probe_rx:-0}" != "0" ]; then
+            sc_probe_age=$(( $(date +%s) - $(date -d "$sc_probe_last" +%s 2>/dev/null || echo 0) ))
+            [ "$sc_probe_age" -gt 300 ] && scs="${Y}●${N}"
+        fi
+    fi
+fi
 
 echo ""
 if [ -n "$sc_exists" ]; then

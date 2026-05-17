@@ -28,7 +28,7 @@
   register: monad_passwd
   changed_when: false
   check_mode: no
-  tags: [fastlane, preflight]
+  tags: [fastlane, preflight, watchdog, deploy]
 
 - name: Set monad_uid and user-env facts
   set_fact:
@@ -36,7 +36,7 @@
     fastlane_user_env:
       XDG_RUNTIME_DIR: "/run/user/{{ monad_passwd.stdout.split(':')[2] }}"
       DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ monad_passwd.stdout.split(':')[2] }}/bus"
-  tags: [fastlane, preflight]
+  tags: [fastlane, preflight, watchdog, deploy]
 
 - name: Assert socket directory exists and is owned by monad
   stat:

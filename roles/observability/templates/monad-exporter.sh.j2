@@ -203,6 +203,21 @@ else:
     echo "# TYPE monad_consensus_nrestarts gauge"
     nrestarts=$(systemctl show "$SERVICE_IDENTIFIER" -p NRestarts --value 2>/dev/null || echo 0)
     echo "monad_consensus_nrestarts ${nrestarts:-0}"
+
+    mev_health=$(curl -sf --max-time 3 "http://localhost:8765/health" 2>/dev/null) || mev_health=""
+    if [ -n "$mev_health" ]; then
+        mev_rx=$(echo "$mev_health" | jq -r '.tx_received // 0' 2>/dev/null) || mev_rx=0
+        mev_last=$(echo "$mev_health" | jq -r '.last_received_at // empty' 2>/dev/null) || mev_last=""
+        echo "# HELP monad_mev_tx_received Total MEV transactions received by sidecar since start"
+        echo "# TYPE monad_mev_tx_received counter"
+        echo "monad_mev_tx_received ${mev_rx:-0}"
+        if [ -n "$mev_last" ] && [ "${mev_rx:-0}" != "0" ]; then
+            mev_age=$(( $(date +%s) - $(date -d "$mev_last" +%s 2>/dev/null || echo 0) ))
+            echo "# HELP monad_mev_seconds_since_last_tx Seconds since FastLane sidecar last received a tx (-1 if sidecar never received any)"
+            echo "# TYPE monad_mev_seconds_since_last_tx gauge"
+            echo "monad_mev_seconds_since_last_tx ${mev_age}"
+        fi
+    fi
 }
 
 collect > "$TMP_FILE"

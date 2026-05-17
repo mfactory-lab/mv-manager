@@ -1,0 +1,10 @@
+[Unit]
+Description=Watch mempool socket; restart FastLane sidecar on inode change
+After=fastlane-sidecar.service
+
+[Path]
+PathChanged={{ monad_mempool_socket }}
+Unit=fastlane-sidecar-watcher.service
+
+[Install]
+WantedBy=default.target

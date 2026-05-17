@@ -1,0 +1,7 @@
+[Unit]
+Description=Restart FastLane sidecar (mempool socket inode changed)
+After=fastlane-sidecar.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/systemctl --user restart fastlane-sidecar.service

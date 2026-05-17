@@ -22,6 +22,7 @@ otel_monad_endpoint: "https://otel-external.monadinfra.com:443"
 alert_disk_threshold: 85
 alert_round_stall_seconds: 300
 alert_restart_loop_threshold: 3
+alert_mev_stale_seconds: 300
 
 # Stack directory
 observability_dir: "{{ monad_home }}/observability"

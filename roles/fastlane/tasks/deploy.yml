@@ -56,3 +56,39 @@
   changed_when: false
   when: not ansible_check_mode
   tags: [fastlane, deploy]
+
+# =============================================================================
+# WATCHER: detect stale Docker bind-mount inode after consensus restarts.
+# The sidecar container pins the mempool socket inode at start time. When the
+# socket is unlink()'d + re-bind()'d by a monad restart, the container reaches
+# a phantom inode and gets ECONNREFUSED forever without exiting, so systemd's
+# Restart=on-failure never triggers. A .path unit on the socket auto-restarts
+# the sidecar whenever the inode changes. Anything else that goes wrong is
+# caught by the MevSidecarStale Grafana alert (operator decides — no blind
+# auto-restart loop).
+# =============================================================================
+- name: Render sidecar watcher user units (.path + .service)
+  template:
+    src: "{{ item }}.j2"
+    dest: "{{ monad_home }}/.config/systemd/user/{{ item }}"
+    owner: "{{ monad_user }}"
+    group: "{{ monad_group }}"
+    mode: '0640'
+  loop:
+    - fastlane-sidecar-watcher.path
+    - fastlane-sidecar-watcher.service
+  notify:
+    - Reload user systemd
+  tags: [fastlane, deploy, watchdog]
+
+- name: Flush handlers so user-systemd sees the new units
+  meta: flush_handlers
+  tags: [fastlane, deploy, watchdog]
+
+- name: Enable and start sidecar .path watcher
+  become_user: "{{ monad_user }}"
+  environment: "{{ fastlane_user_env }}"
+  command: systemctl --user enable --now fastlane-sidecar-watcher.path
+  changed_when: false
+  when: not ansible_check_mode
+  tags: [fastlane, deploy, watchdog]
