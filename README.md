@@ -144,8 +144,12 @@ make restart NODE=validator-02
 ```
 common          → Preflight checks, firewall (UFW), fail2ban, sudoers
 prepare_server  → System packages, kernel tuning, hugepages, TrieDB disk
-monad-node      → Install monad package (apt), node.toml config, systemd service
+monad-node      → Install monad apt package, node.toml config, systemd service,
+                  cruft compat symlinks (ledger/config under monad-bft/)
+execution       → Execution layer, statesync socket
+rpc             → JSON-RPC server (optional)
 validator       → Staking CLI, key generation, registration scripts
+fastlane        → MEV sidecar in rootless Docker + socket watcher (opt-in)
 monitoring      → Health check scripts, alert thresholds
 backup          → Automated backup scripts (daily, 7-day retention)
 observability   → Prometheus, Grafana, OTEL collector, custom exporter (opt-in)
@@ -157,6 +161,21 @@ Each role can run independently using tags:
 ansible-playbook -i inventory/testnet.yml playbooks/deploy-validator.yml --tags monad
 ```
 
+**Standalone playbooks** for targeted operations:
+
+```
+setup-execution.yml      → Just the execution layer
+setup-rpc.yml            → Just the JSON-RPC server
+setup-fastlane.yml       → Just the FastLane MEV sidecar
+setup-observability.yml  → Just the observability stack
+snapshot.yml             → Apply chain snapshot
+register-validator.yml   → On-chain validator registration
+upgrade-node.yml         → Rolling monad package upgrade (serial: 1)
+migrate-validator.yml    → Fast migrate validator to new server
+maintenance.yml          → restart/stop/start/backup/health (tag-driven)
+recovery.yml             → Diagnostics + repair (tag-driven)
+```
+
 ## Commands
 
 Run `make help` to see all available commands. All commands support `ENV=testnet|mainnet` and `NODE=<name>` to target a specific network or host.
@@ -164,33 +183,42 @@ Run `make help` to see all available commands. All commands support `ENV=testnet
 ### Deployment
 
 ```bash
-make deploy              # Full deployment pipeline
-make snapshot            # Download and apply snapshot for fast sync
-make execution           # Setup execution layer (statesync socket)
-make register            # Register as validator (requires synced node + 100k MON)
-make rpc                 # Setup JSON-RPC server
-make upgrade             # Upgrade monad packages to latest version
-make observability       # Deploy observability stack (Prometheus + Grafana)
+make bootstrap NAME=foo-testnet  # Generate keys + vault for a new validator
+make deploy                      # Full deployment pipeline
+make snapshot                    # Download and apply snapshot for fast sync
+make execution                   # Setup execution layer (statesync socket)
+make register                    # Register as validator (requires synced node + 100k MON)
+make rpc                         # Setup JSON-RPC server
+make fastlane                    # Deploy FastLane MEV sidecar (rootless docker)
+make upgrade CONFIRM=yes         # Upgrade monad packages to latest version
+make observability               # Deploy observability stack (Prometheus + Grafana)
+make migrate OLD=v1 NEW=v2       # Fast-migrate validator to a new host
 ```
 
 ### Monitoring
 
 ```bash
-make health              # Run health checks
-make status              # Validator dashboard (sync, voting, stake, resources)
-make logs                # Tail logs (SVC=consensus|execution|rpc LINES=50)
-make watch               # Stream logs with color (SVC=consensus|execution|rpc)
-make grafana             # Open Grafana via SSH tunnel
+make health                      # Run health checks
+make status                      # Validator dashboard (sync, voting, stake, MEV)
+make sidecar-health              # Check FastLane sidecar /health endpoint
+make panic-check                 # Scan recent consensus journals for panic patterns
+make logs                        # Tail logs (SVC=consensus|execution|rpc LINES=50)
+make watch                       # Stream logs with color (SVC=consensus|execution|rpc)
+make grafana                     # Open Grafana via SSH tunnel
 ```
 
 ### Operations
 
 ```bash
-make restart             # Restart execution → consensus → rpc
-make stop                # Stop all monad services
-make start               # Start execution → consensus → rpc
-make backup              # Backup keys and config
-make commission          # Set commission rate (RATE=20 NODE=name)
+make restart                     # Restart execution → consensus → rpc
+make stop CONFIRM=yes            # Stop all monad services
+make start                       # Start execution → consensus → rpc
+make backup-config               # Backup node config on remote server
+make backup-keys                 # Download validator keystores to secrets/
+make commission RATE=20          # Set commission rate
+make claim                       # Claim validator rewards
+make compound                    # Claim + restake rewards
+make auto-compound               # Enable nightly auto-compound timer
 ```
 
 ### Recovery
@@ -272,7 +300,13 @@ The registration script stakes MON, submits your validator keys on-chain, and be
 | 9090 | TCP | Localhost only | Prometheus (Docker internal) |
 | 4317 | TCP | Localhost only | OTEL gRPC (Docker internal) |
 
-Only P2P and auth ports are exposed publicly. RPC and internal services are bound to localhost. Grafana (3000) is exposed through the firewall when the observability stack is deployed.
+**FastLane MEV sidecar (opt-in):**
+
+| Port | Protocol | Direction | Purpose |
+|------|----------|-----------|---------|
+| 8765 | TCP | Localhost only | Sidecar `/health` + monitoring (rootless Docker) |
+
+Only P2P and auth ports are exposed publicly. RPC, sidecar, and internal services are bound to localhost. Grafana (3000) is exposed through the firewall when the observability stack is deployed.
 
 ## Observability
 
@@ -284,20 +318,76 @@ make grafana             # Open Grafana via SSH tunnel
 ```
 
 **What's included:**
-- **Grafana** dashboard with validator health, staking metrics, consensus stats, and system resources
-- **Prometheus** scraping node_exporter and custom monad metrics
+- **Grafana** dashboard with validator health, staking, MEV, consensus stats, system resources
+- **Prometheus** scraping `node_exporter` and custom monad metrics (textfile collector)
 - **OTEL Collector** forwarding telemetry to Monad infra
-- **Custom monad exporter** that queries the RPC and staking contract every 30s, producing Prometheus metrics via textfile collector
+- **Custom monad exporter** that queries the RPC, staking contract, and the FastLane sidecar every 30s
 
-**Metrics exported** by the monad exporter:
-- Block height, sync status, epoch
-- Validator stake, pending stake, unclaimed rewards, commission
-- Wallet balance
+**Metrics exported:**
+- Block height, sync status, epoch, version-outdated flag
+- Validator stake, pending stake, unclaimed rewards, commission, wallet balance
 - Consensus round, voting rate, skipped rounds, network participation, proposals
+- Consensus panic-pattern count and `NRestarts` (restart-loop detection)
+- MEV sidecar tx counter (`monad_mev_tx_received`) and last-tx timestamp (`monad_mev_last_received_timestamp`)
 
-**Alerting** (optional): Configure `vault_telegram_bot_token` and `vault_telegram_chat_id` in vault for Telegram alerts on sync loss, high disk, and service failures.
+**Bundled Grafana alert rules:**
+
+| Rule | Fires when |
+|---|---|
+| `ServiceDown` | Consensus or execution unit not active for 1m |
+| `NodeOutOfSync` | `eth_syncing` non-false for 5m |
+| `VotingRateLow` | Vote success drops below 80% over 5m |
+| `RoundProgressionStalled` | Consensus round flat for `alert_round_stall_seconds` |
+| `ConsensusRestartLoop` | `NRestarts` delta over 10m exceeds threshold |
+| `PanicPatternDetected` | "high qc too far / block tree root / panicked" in journal |
+| `MevSidecarStale` | FastLane sidecar received no tx in >300s (configurable) |
+| `DiskSpaceLow` | Root mount above `alert_disk_threshold` (%) |
+| `HighMemoryUsage` | Memory above 90% for 10m |
+| `LowWalletBalance` | Auth wallet below 1 MON for 10m |
+| `NodeExporterDown` / `OtelCollectorDown` | Scrape targets unreachable |
+| `MonadVersionOutdated` | Local monad version differs from latest published |
+
+**Alerting** (optional): Configure `vault_telegram_bot_token` and `vault_telegram_chat_id` in vault for Telegram delivery.
 
 The stack is opt-in: set `observability_enabled: true` in your inventory or run `make observability` as a standalone playbook.
+
+## FastLane MEV Sidecar
+
+Optional MEV sidecar that connects to the consensus mempool socket and forwards transactions to the FastLane network. Runs as a **rootless Docker container** under the `monad` user, managed by a user-level systemd unit.
+
+```bash
+make fastlane            # Deploy the sidecar
+make sidecar-health      # Probe the /health endpoint
+make status              # Sidecar shown as ●; turns yellow if no tx in >5m
+```
+
+**Architecture:**
+
+```
+monad consensus  ─┐
+                  ├──▶  /var/.../mempool.sock  ◀──[ bind-mount, read-only ]──  fastlane-sidecar container
+                  │
+                  └──  unlink + bind on restart  ──▶  socket inode changes
+                                                          │
+                                       fastlane-sidecar-watcher.path  ──▶  fastlane-sidecar-watcher.service
+                                                          │
+                                                          └─▶  systemctl --user restart fastlane-sidecar
+```
+
+**Three defense layers against stale-inode silent failures** (the failure mode that caused a 3-day silent MEV outage before this was hardened):
+1. `.path` unit watches the **parent directory** for `IN_CREATE` (a watch on the file itself follows the dead inode after unlink)
+2. Watcher service waits up to 30s for `[ -S socket ]` before triggering restart
+3. `fastlane-sidecar.service` runs `ExecStartPre=[ -S socket ]` on **every** start path — refuses to start if the socket is missing, preventing Docker from auto-creating a host directory at the bind-mount path
+
+The dashboard badge (`make status`) consults `/health` freshness, not just `systemctl is-active` — a sidecar wedged on a phantom inode still reports active but the badge turns yellow.
+
+Enable per host in inventory:
+
+```yaml
+my-validator:
+  ansible_host: "1.2.3.4"
+  fastlane_enabled: true
+```
 
 ## Troubleshooting
 
@@ -332,6 +422,17 @@ make diagnose                # Check disk partitions
 ```bash
 make recovery                # Full recovery: check services, repair data, restart
 ```
+
+**FastLane sidecar shows yellow in `make status` (stale `/health`)**
+```bash
+make sidecar-health          # Confirm /health is responding but tx_received is stale
+# The .path watcher should auto-restart on the next consensus socket recreate.
+# If not, force it:
+systemctl --user restart fastlane-sidecar.service
+```
+Cause: the sidecar's bind-mount pinned a now-deleted socket inode. The watcher
+is the long-term fix; ExecStartPre guarantees the container won't start with
+the socket missing.
 
 ## Contributing
 
