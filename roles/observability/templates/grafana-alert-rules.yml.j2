@@ -627,11 +627,14 @@ groups:
               to: 0
             model:
               refId: A
-              # Compute age from prometheus's own clock, not from the exporter's
-              # age field. Suppress the alert until the sidecar has actually
-              # received at least one tx (timestamp=0 sentinel) so a brand-new
-              # node doesn't fire forever.
-              expr: (time() - monad_mev_last_received_timestamp) and on() (monad_mev_tx_received > 0)
+              # Compute age from prometheus's own clock (immune to exporter
+              # staleness) and multiply by a 1/0 mask so brand-new nodes
+              # (tx_received=0) collapse to 0 (below threshold) without ever
+              # producing an empty vector. Empty vector + noDataState:Alerting
+              # would falsely fire on a fresh node -- the `> bool 0` form
+              # preserves the series. Default label matching keeps this
+              # per-instance, so a busy node can't silence a stalled neighbor.
+              expr: (time() - monad_mev_last_received_timestamp) * (monad_mev_tx_received > bool 0)
               intervalMs: 1000
               maxDataPoints: 43200
           - refId: B

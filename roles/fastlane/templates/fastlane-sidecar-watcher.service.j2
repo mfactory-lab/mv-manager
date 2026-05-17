@@ -1,9 +1,8 @@
 [Unit]
 Description=Restart FastLane sidecar (mempool socket inode changed)
-# Bind to consensus so we only run after the new socket exists, not during the
-# brief gap when consensus has unlinked the old one. Without this guard, docker
-# run can create a host *directory* at the bind-mount path during the race,
-# which then prevents consensus from binding the socket on its next restart.
+# Note: After= here is hint-only; the actual race protection lives in the
+# wait-loop below and in fastlane-sidecar.service's ExecStartPre socket guard.
+# systemd has no concept of "wait for consensus to recreate the socket".
 After=fastlane-sidecar.service
 
 [Service]

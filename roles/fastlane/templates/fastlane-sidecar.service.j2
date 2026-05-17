@@ -13,6 +13,13 @@ TimeoutStartSec=120
 TimeoutStopSec=30
 
 ExecStartPre=-/usr/bin/docker rm -f fastlane-sidecar
+# Refuse to start unless the mempool socket exists AND is a socket. Without
+# this, `docker run -v` auto-creates a host *directory* at the bind-mount path
+# if the socket is missing, which then prevents consensus from binding the
+# socket on its next restart. This guard runs on every start path -- watcher,
+# handler, manual `systemctl restart`, deploy redeploy -- not just the .path
+# watcher's wait-loop.
+ExecStartPre=/bin/sh -c '[ -S {{ monad_mempool_socket }} ] || { echo "mempool socket {{ monad_mempool_socket }} missing or not a socket; refusing to start (would corrupt bind-mount path)" >&2; exit 1; }'
 
 ExecStart=/usr/bin/docker run --rm --name fastlane-sidecar \
   --read-only \
