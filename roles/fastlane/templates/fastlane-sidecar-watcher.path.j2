@@ -1,9 +1,14 @@
 [Unit]
-Description=Watch mempool socket; restart FastLane sidecar on inode change
+Description=Watch mempool socket dir; restart FastLane sidecar on inode change
 After=fastlane-sidecar.service
 
 [Path]
-PathChanged={{ monad_mempool_socket }}
+# Watch the parent directory rather than the socket file itself. An inotify
+# watch on a file path follows the original inode after unlink(), so when
+# consensus recreates the socket the watch fires on the dead inode and never
+# sees the new one. Watching the directory catches the IN_CREATE/IN_MOVED_TO
+# event for the recreated socket reliably.
+PathModified={{ monad_socket_dir }}
 Unit=fastlane-sidecar-watcher.service
 
 [Install]

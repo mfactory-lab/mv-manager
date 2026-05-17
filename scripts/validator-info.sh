@@ -124,12 +124,16 @@ fi
 scs="${R}●${N}"
 if [ "$sc_s" = "active" ]; then
     scs="${G}●${N}"
-    sc_probe=$(curl -s --connect-timeout 2 http://localhost:8765/health 2>/dev/null)
+    # `|| true` on every external call: this script runs under `set -e`, so a
+    # missing sidecar / unreachable /health / malformed JSON would otherwise
+    # abort the whole `make status` output mid-render.
+    sc_probe=$(curl -s --connect-timeout 2 http://localhost:8765/health 2>/dev/null || true)
     if [ -n "$sc_probe" ]; then
-        sc_probe_last=$(echo "$sc_probe" | jq -r '.last_received_at // empty' 2>/dev/null)
-        sc_probe_rx=$(echo "$sc_probe" | jq -r '.tx_received // 0' 2>/dev/null)
+        sc_probe_last=$(echo "$sc_probe" | jq -r '.last_received_at // empty' 2>/dev/null || true)
+        sc_probe_rx=$(echo "$sc_probe" | jq -r '.tx_received // 0' 2>/dev/null || echo 0)
         if [ -n "$sc_probe_last" ] && [ "${sc_probe_rx:-0}" != "0" ]; then
-            sc_probe_age=$(( $(date +%s) - $(date -d "$sc_probe_last" +%s 2>/dev/null || echo 0) ))
+            sc_probe_epoch=$(date -d "$sc_probe_last" +%s 2>/dev/null || echo 0)
+            sc_probe_age=$(( $(date +%s) - sc_probe_epoch ))
             [ "$sc_probe_age" -gt 300 ] && scs="${Y}●${N}"
         fi
     fi

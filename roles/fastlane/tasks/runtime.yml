@@ -133,7 +133,7 @@
     owner: "{{ monad_user }}"
     group: "{{ monad_group }}"
     mode: '0750'
-  tags: [fastlane, runtime]
+  tags: [fastlane, runtime, deploy, watchdog]
 
 - name: Install rootless docker user units
   become_user: "{{ monad_user }}"

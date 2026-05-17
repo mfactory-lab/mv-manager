@@ -1,7 +1,15 @@
 [Unit]
 Description=Restart FastLane sidecar (mempool socket inode changed)
+# Bind to consensus so we only run after the new socket exists, not during the
+# brief gap when consensus has unlinked the old one. Without this guard, docker
+# run can create a host *directory* at the bind-mount path during the race,
+# which then prevents consensus from binding the socket on its next restart.
 After=fastlane-sidecar.service
 
 [Service]
 Type=oneshot
-ExecStart=/bin/systemctl --user restart fastlane-sidecar.service
+# Wait up to 30s for consensus to recreate the socket before restarting the
+# sidecar. Abort the restart entirely if the socket never comes back -- a
+# missing socket is consensus's problem, not ours, and restarting the sidecar
+# into a phantom mount would just recreate the original bug.
+ExecStart=/bin/bash -c 'for i in $(seq 1 30); do [ -S {{ monad_mempool_socket }} ] && exec /bin/systemctl --user restart fastlane-sidecar.service; sleep 1; done; echo "mempool socket {{ monad_mempool_socket }} did not reappear within 30s; refusing to restart sidecar" >&2; exit 1'

@@ -79,6 +79,7 @@
     - fastlane-sidecar-watcher.service
   notify:
     - Reload user systemd
+    - Restart fastlane sidecar watcher path
   tags: [fastlane, deploy, watchdog]
 
 - name: Flush handlers so user-systemd sees the new units

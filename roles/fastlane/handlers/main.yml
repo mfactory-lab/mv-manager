@@ -10,3 +10,11 @@
   environment: "{{ fastlane_user_env }}"
   command: systemctl --user restart fastlane-sidecar.service
   changed_when: false
+
+- name: Restart fastlane sidecar watcher path
+  become_user: "{{ monad_user }}"
+  environment: "{{ fastlane_user_env }}"
+  # .path units don't reload watched-path config on daemon-reload; the unit
+  # has to be restarted for a template change to take effect.
+  command: systemctl --user restart fastlane-sidecar-watcher.path
+  changed_when: false

@@ -208,15 +208,26 @@ else:
     if [ -n "$mev_health" ]; then
         mev_rx=$(echo "$mev_health" | jq -r '.tx_received // 0' 2>/dev/null) || mev_rx=0
         mev_last=$(echo "$mev_health" | jq -r '.last_received_at // empty' 2>/dev/null) || mev_last=""
+        # Reject anything that isn't an unsigned integer so we never write a
+        # non-numeric sample (Prometheus textfile collector silently drops the
+        # whole file on parse error).
+        [[ "$mev_rx" =~ ^[0-9]+$ ]] || mev_rx=0
         echo "# HELP monad_mev_tx_received Total MEV transactions received by sidecar since start"
         echo "# TYPE monad_mev_tx_received counter"
-        echo "monad_mev_tx_received ${mev_rx:-0}"
-        if [ -n "$mev_last" ] && [ "${mev_rx:-0}" != "0" ]; then
-            mev_age=$(( $(date +%s) - $(date -d "$mev_last" +%s 2>/dev/null || echo 0) ))
-            echo "# HELP monad_mev_seconds_since_last_tx Seconds since FastLane sidecar last received a tx (-1 if sidecar never received any)"
-            echo "# TYPE monad_mev_seconds_since_last_tx gauge"
-            echo "monad_mev_seconds_since_last_tx ${mev_age}"
+        echo "monad_mev_tx_received ${mev_rx}"
+
+        # Emit last-received timestamp as an epoch gauge. Alerts use
+        # (time() - monad_mev_last_received_timestamp) so a stale exporter
+        # or paused sidecar can never silently "freshen" the metric.
+        # Sentinel 0 = sidecar has never received a tx (treated as old).
+        mev_last_epoch=0
+        if [ -n "$mev_last" ]; then
+            mev_last_epoch=$(date -d "$mev_last" +%s 2>/dev/null || echo 0)
+            [[ "$mev_last_epoch" =~ ^[0-9]+$ ]] || mev_last_epoch=0
         fi
+        echo "# HELP monad_mev_last_received_timestamp Unix epoch of FastLane sidecar's last received tx (0 if never)"
+        echo "# TYPE monad_mev_last_received_timestamp gauge"
+        echo "monad_mev_last_received_timestamp ${mev_last_epoch}"
     fi
 }
 

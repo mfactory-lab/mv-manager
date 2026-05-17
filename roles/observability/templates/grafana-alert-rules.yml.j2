@@ -610,7 +610,11 @@ groups:
         title: MevSidecarStale
         condition: C
         for: 5m
-        noDataState: OK
+        # Alerting on noData: a missing metric means the textfile collector
+        # stopped emitting it -- either the exporter is dead or the sidecar
+        # /health endpoint is unreachable. Both deserve an alert; OK would
+        # silently mask both.
+        noDataState: Alerting
         labels:
           severity: warning
         annotations:
@@ -623,7 +627,11 @@ groups:
               to: 0
             model:
               refId: A
-              expr: monad_mev_seconds_since_last_tx
+              # Compute age from prometheus's own clock, not from the exporter's
+              # age field. Suppress the alert until the sidecar has actually
+              # received at least one tx (timestamp=0 sentinel) so a brand-new
+              # node doesn't fire forever.
+              expr: (time() - monad_mev_last_received_timestamp) and on() (monad_mev_tx_received > 0)
               intervalMs: 1000
               maxDataPoints: 43200
           - refId: B
