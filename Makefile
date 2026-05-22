@@ -171,8 +171,14 @@ grafana: ## Open Grafana via SSH tunnel [NODE=] [PORT=3030]
 	NAME=$$(echo "$(NODE)" | grep -q . && echo "$(NODE)" || echo "first validator"); \
 	LPORT=$${PORT:-3030}; \
 	if lsof -iTCP:$$LPORT -sTCP:LISTEN -P -n >/dev/null 2>&1; then \
-		echo "✗ local port $$LPORT is already in use — pass PORT=<free port>"; \
-		lsof -iTCP:$$LPORT -sTCP:LISTEN -P -n | head -3; \
+		HOLDER=$$(lsof -iTCP:$$LPORT -sTCP:LISTEN -P -n | tail -n +2 | head -1); \
+		echo "✗ local port $$LPORT already in use:"; \
+		echo "  $$HOLDER"; \
+		if echo "$$HOLDER" | grep -q "^ssh "; then \
+			echo "  Looks like a previous tunnel. Kill it:  pkill -f 'ssh -N -L $$LPORT'"; \
+		else \
+			echo "  Pass a free port:                       make grafana PORT=3031 NODE=$(NODE)"; \
+		fi; \
 		exit 1; \
 	fi; \
 	echo "Grafana on $$NAME ($$IP) → http://localhost:$$LPORT"; \
