@@ -139,12 +139,48 @@ if [ "$sc_s" = "active" ]; then
     fi
 fi
 
-echo ""
-if [ -n "$sc_exists" ]; then
-    echo -e "  $cs consensus   $es execution   $rs rpc   $scs fastlane"
-else
-    echo -e "  $cs consensus   $es execution   $rs rpc"
+# Observability: detect by compose file presence (matches `make observability` deploy path).
+# Like fastlane, liveness alone is misleading — a green collector wedged on dial retries
+# pushes nothing to MF and silently breaks VDP compliance (incident 2026-05-22). Probe the
+# collector's self-telemetry and downgrade to yellow if send_failed is incrementing.
+obs_exists=""
+obs_badge=""
+if [ -f /home/monad/observability/docker-compose.yml ]; then
+    obs_exists="yes"
+    obs_up=$(docker ps --filter "label=com.docker.compose.project=observability" \
+                       --filter "status=running" --format '{{.Names}}' 2>/dev/null | wc -l)
+    if [ "$obs_up" -ge 3 ]; then
+        obs_badge="${G}●${N}"
+        # `|| true` everywhere: script runs under `set -e`.
+        obs_probe=$(curl -s --connect-timeout 2 http://127.0.0.1:8888/metrics 2>/dev/null || true)
+        if [ -n "$obs_probe" ]; then
+            obs_failed=$(echo "$obs_probe" | grep -E '^otelcol_exporter_send_failed_metric_points_total\{.*exporter="otlp"' \
+                         | awk '{print $2}' | head -1)
+            obs_sent=$(echo "$obs_probe" | grep -E '^otelcol_exporter_sent_metric_points_total\{.*exporter="otlp"' \
+                       | awk '{print $2}' | head -1)
+            # Default to "0" if the counter line is absent — `send_failed` is only
+            # published once it has a non-zero value, so absence = healthy.
+            obs_failed=${obs_failed:-0}
+            obs_sent=${obs_sent:-0}
+            # send_failed > 0 OR no sends yet → yellow (push pipeline unhealthy).
+            if [ "${obs_failed%.*}" != "0" ] || [ "${obs_sent%.*}" = "0" ]; then
+                obs_badge="${Y}●${N}"
+            fi
+        else
+            obs_badge="${Y}●${N}"
+        fi
+    elif [ "$obs_up" -gt 0 ]; then
+        obs_badge="${Y}●${N}"
+    else
+        obs_badge="${R}●${N}"
+    fi
 fi
+
+echo ""
+line="  $cs consensus   $es execution   $rs rpc"
+[ -n "$sc_exists" ] && line="$line   $scs fastlane"
+[ -n "$obs_exists" ] && line="$line   $obs_badge observability"
+echo -e "$line"
 
 # ── Node info ────────────────────────────────────────────
 
