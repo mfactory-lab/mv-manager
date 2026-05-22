@@ -13,6 +13,16 @@
     - ../group_vars/{{ env }}.yml
 
   tasks:
+    # Refresh the Category Labs apt signing key before touching the cache.
+    # The key has expired once (2026-05-20) and locked the entire fleet out
+    # of `apt update`; the role-shipped bytes are the source of truth, so
+    # ensure the host's copy matches before we attempt the upgrade.
+    - name: Refresh Category Labs apt signing key
+      copy:
+        src: ../roles/monad-node/files/category-labs.gpg
+        dest: /etc/apt/keyrings/category-labs.gpg
+        mode: '0644'
+
     - name: Check installed monad version
       command: dpkg-query -W -f='${Version}' monad
       register: installed_version
