@@ -10,14 +10,16 @@ services:
       - "127.0.0.1:{{ otel_prometheus_port }}:8889"
       - "127.0.0.1:{{ otel_metrics_port }}:8888"
     mem_limit: 2g
-    # Force Go's net package to use IPv4-only DNS lookups. Most validator
-    # hosts have no global IPv6 connectivity; grpc-go otherwise picks up
-    # AAAA records for otel-external.monadinfra.com (Cloudflare, dual-stack)
-    # and burns retries on `network unreachable` v6 dials, never falling
-    # through to the v4 address. GODEBUG=netdns=go forces Go's pure-Go
-    # resolver so the netdns option is honored.
-    environment:
-      GODEBUG: "netdns=go+4"
+    # Disable IPv6 in the container's network namespace. Most validator hosts
+    # have no global v6 connectivity; otel-external.monadinfra.com is on
+    # Cloudflare (dual-stack) and grpc-go's resolver calls LookupIPAddr
+    # directly — it ignores GODEBUG=netdns=go+4 and will burn retries on
+    # unreachable AAAA addresses before ever trying v4, wedging the OTLP
+    # exporter queue. Killing v6 in the netns makes the resolver return A
+    # records only.
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+      - net.ipv6.conf.default.disable_ipv6=1
 
   prometheus:
     image: prom/prometheus:{{ prometheus_version }}
