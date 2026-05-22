@@ -10,16 +10,24 @@ services:
       - "127.0.0.1:{{ otel_prometheus_port }}:8889"
       - "127.0.0.1:{{ otel_metrics_port }}:8888"
     mem_limit: 2g
-    # Disable IPv6 in the container's network namespace. Most validator hosts
-    # have no global v6 connectivity; otel-external.monadinfra.com is on
-    # Cloudflare (dual-stack) and grpc-go's resolver calls LookupIPAddr
-    # directly — it ignores GODEBUG=netdns=go+4 and will burn retries on
-    # unreachable AAAA addresses before ever trying v4, wedging the OTLP
-    # exporter queue. Killing v6 in the netns makes the resolver return A
-    # records only.
+    # Disable IPv6 in the container's network namespace AND pin the upstream
+    # OTLP endpoint to its A records in /etc/hosts. Background: validator
+    # hosts typically have no global v6 connectivity. The collector's gRPC
+    # exporter (grpc-go) calls net.DefaultResolver.LookupIPAddr directly —
+    # it ignores GODEBUG=netdns=go+4 and Go's pure-Go resolver doesn't honor
+    # `options no-aaaa` either. The result was the OTLP push queue wedging
+    # on AAAA dial retries (network unreachable / cannot assign requested
+    # address), never flushing real samples. Go's resolver consults
+    # /etc/hosts before DNS, so the extra_hosts entries short-circuit the
+    # lookup to v4 only; the sysctls are belt-and-braces in case Cloudflare
+    # rotates and an unpinned hostname leaks in.
     sysctls:
       - net.ipv6.conf.all.disable_ipv6=1
       - net.ipv6.conf.default.disable_ipv6=1
+    extra_hosts:
+      - "otel-external.monadinfra.com:104.26.3.107"
+      - "otel-external.monadinfra.com:104.26.2.107"
+      - "otel-external.monadinfra.com:172.67.74.36"
 
   prometheus:
     image: prom/prometheus:{{ prometheus_version }}
