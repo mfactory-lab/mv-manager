@@ -43,6 +43,30 @@
   notify: Restart observability stack
   tags: [observability, config]
 
+# Read the SECP public key for the OTEL `secp_key` resource label that Monad
+# Foundation's monitoring infrastructure keys on to attribute metrics to a
+# validator. Without this, MF sees pushed metrics as unidentified and reports
+# the host as "not pushing" (VDP announcement 2026-05-22).
+- name: Read SECP public key for OTEL resource labeling
+  ansible.builtin.slurp:
+    src: "{{ monad_secp_key_file }}.pub"
+  register: secp_pub_raw
+  failed_when: false
+  tags: [observability, config, otel]
+
+- name: Set host_secp_key fact
+  ansible.builtin.set_fact:
+    host_secp_key: "{{ (secp_pub_raw.content | b64decode | trim) if (secp_pub_raw.content is defined) else '' }}"
+  tags: [observability, config, otel]
+
+- name: Fail loudly if SECP public key is missing on a validator
+  ansible.builtin.fail:
+    msg: "SECP public key not found at {{ monad_secp_key_file }}.pub on {{ inventory_hostname }} (type={{ type | default('?') }}). OTEL would push unlabeled metrics and Monad Foundation would treat this host as non-compliant. Generate keys first."
+  when:
+    - (type | default('')) == 'validator'
+    - host_secp_key | length == 0
+  tags: [observability, config, otel]
+
 - name: Template OTEL collector config
   ansible.builtin.template:
     src: otel-config.yml.j2

@@ -40,6 +40,13 @@ processors:
 
   resource:
     attributes:
+{% if host_secp_key | default('') | length > 0 %}
+      # Monad Foundation keys on this label to attribute pushed metrics to a
+      # validator. Missing label => MF treats us as non-compliant (VDP).
+      - key: secp_key
+        value: "{{ host_secp_key }}"
+        action: upsert
+{% endif %}
       - key: node_name
         value: "{{ inventory_hostname }}"
         action: upsert
