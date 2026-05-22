@@ -55,7 +55,31 @@
       become_user: "{{ monad_user }}"
       when: key_dir_stat.stat.exists
 
-    - name: Stop services
+    - name: Unhold monad package
+      dpkg_selections:
+        name: monad
+        selection: install
+
+    # Install the new binaries while consensus/execution/rpc keep running on
+    # the OLD ones (Linux pins the open inode across dpkg's overwrite, so the
+    # live processes are unaffected). This shrinks the no-voting window from
+    # ~apt-install duration (10–30s on a busy disk) down to just the systemd
+    # cycle (~2–3s). The monad package's own monad-bft.service is masked by
+    # the monad-node role, and our consensus/execution/rpc units are not
+    # owned by the package, so dpkg postinst will not touch live services.
+    - name: Upgrade monad package (binaries swap in place; live services unaffected)
+      apt:
+        name: "monad={{ monad_version }}"
+        state: present
+        update_cache: yes
+        allow_change_held_packages: yes
+
+    - name: Hold monad package version
+      dpkg_selections:
+        name: monad
+        selection: hold
+
+    - name: Stop services (now that new binaries are on disk)
       systemd:
         name: "{{ item }}"
         state: stopped
@@ -67,23 +91,6 @@
         - stop_result is failed
         - "'Could not find the requested service' not in (stop_result.msg | default(''))"
       register: stop_result
-
-    - name: Unhold monad package
-      dpkg_selections:
-        name: monad
-        selection: install
-
-    - name: Upgrade monad package
-      apt:
-        name: "monad={{ monad_version }}"
-        state: present
-        update_cache: yes
-        allow_change_held_packages: yes
-
-    - name: Hold monad package version
-      dpkg_selections:
-        name: monad
-        selection: hold
 
     - name: Reset failed state and restart counter before liveness gate
       command: "systemctl reset-failed {{ service_identifier }}"
