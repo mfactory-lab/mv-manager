@@ -1,4 +1,14 @@
 ---
+- name: Refresh apt cache (best-effort; tolerate expired third-party GPG keys)
+  # The Ansible apt module's `update_cache: true` treats partial-cache success
+  # (e.g. one broken third-party repo) as a hard failure. Docker comes from the
+  # Ubuntu archive, not from Category Labs, so we tolerate signature warnings
+  # here and pin `update_cache: false` on the subsequent install task.
+  # Workaround for Category Labs GPG key expiry 2026-05-20 (upstream issue).
+  ansible.builtin.shell: apt-get update 2>&1 || true
+  changed_when: false
+  tags: [observability, docker]
+
 - name: Install Docker
   ansible.builtin.apt:
     name:
@@ -6,7 +16,7 @@
       - docker-compose-v2
       - python3-docker
     state: present
-    update_cache: true
+    update_cache: false
   tags: [observability, docker]
 
 - name: Enable Docker service
