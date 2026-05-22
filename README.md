@@ -296,7 +296,7 @@ The registration script stakes MON, submits your validator keys on-chain, and be
 
 | Port | Protocol | Direction | Purpose |
 |------|----------|-----------|---------|
-| 3000 | TCP | Public | Grafana dashboard |
+| 3000 | TCP | Localhost only | Grafana dashboard (access via `make grafana` SSH tunnel) |
 | 9090 | TCP | Localhost only | Prometheus (Docker internal) |
 | 4317 | TCP | Localhost only | OTEL gRPC (Docker internal) |
 
@@ -306,7 +306,7 @@ The registration script stakes MON, submits your validator keys on-chain, and be
 |------|----------|-----------|---------|
 | 8765 | TCP | Localhost only | Sidecar `/health` + monitoring (rootless Docker) |
 
-Only P2P and auth ports are exposed publicly. RPC, sidecar, and internal services are bound to localhost. Grafana (3000) is exposed through the firewall when the observability stack is deployed.
+Only P2P and auth ports are exposed publicly. Everything else — RPC, Grafana, Prometheus, OTEL, FastLane sidecar — is bound to localhost on the validator and reached via SSH tunnel (`make grafana` for the dashboard).
 
 ## Observability
 

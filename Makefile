@@ -166,11 +166,19 @@ diagnose: ## Show diagnostic info
 ping: ## Test connectivity
 	@ansible $(A) all -m ping
 
-grafana: ## Open Grafana via SSH tunnel [NODE=]
+grafana: ## Open Grafana via SSH tunnel [NODE=] [PORT=3030]
 	@IP=$(call node_ip); \
-	echo "Grafana: http://localhost:3000"; \
-	echo "Press Ctrl+C to close"; \
-	ssh -N -L 3000:127.0.0.1:3000 root@$$IP
+	NAME=$$(echo "$(NODE)" | grep -q . && echo "$(NODE)" || echo "first validator"); \
+	LPORT=$${PORT:-3030}; \
+	if lsof -iTCP:$$LPORT -sTCP:LISTEN -P -n >/dev/null 2>&1; then \
+		echo "✗ local port $$LPORT is already in use — pass PORT=<free port>"; \
+		lsof -iTCP:$$LPORT -sTCP:LISTEN -P -n | head -3; \
+		exit 1; \
+	fi; \
+	echo "Grafana on $$NAME ($$IP) → http://localhost:$$LPORT"; \
+	echo "Login: admin / (see vault_grafana_admin_password)"; \
+	echo "Press Ctrl+C to close tunnel"; \
+	ssh -N -L $$LPORT:127.0.0.1:3000 root@$$IP
 
 hardware: ## Show hardware specs (CPU, RAM, storage)
 	@MONAD_INV=$(INV) ./scripts/hardware-info.sh "$(NODE)"
