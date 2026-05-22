@@ -4,32 +4,24 @@
 # =============================================================================
 # APT REPOSITORY SETUP
 # =============================================================================
-- name: Check if Category Labs GPG key exists
-  stat:
-    path: /etc/apt/keyrings/category-labs.gpg
-  register: gpg_key_stat
-  tags: [monad, install]
-
 - name: Create apt keyrings directory
   file:
     path: /etc/apt/keyrings
     state: directory
     mode: '0755'
-  when: not gpg_key_stat.stat.exists
   tags: [monad, install]
 
+# `copy` is already idempotent on checksum — no `when:` guard. This task MUST
+# re-run after key expiry refresh so we can ship a new bytes on the next run
+# (Category Labs key D9FA4D9BB7CD9328005E26980802DFD2634AE7F0 was re-signed
+# 2026-05-22 after a 2-day expiry blackout; without re-copying, hosts would
+# stay stuck on EXPKEYSIG apt errors forever).
 - name: Install Category Labs GPG key
   copy:
     src: category-labs.gpg
     dest: /etc/apt/keyrings/category-labs.gpg
     mode: '0644'
-  when: not gpg_key_stat.stat.exists
-  tags: [monad, install]
-
-- name: Check if apt source exists
-  stat:
-    path: /etc/apt/sources.list.d/category-labs.sources
-  register: apt_source_stat
+  register: cat_labs_key
   tags: [monad, install]
 
 - name: Add Category Labs apt repository
@@ -43,13 +35,12 @@
     dest: /etc/apt/sources.list.d/category-labs.sources
     mode: '0644'
   register: apt_repo
-  when: not apt_source_stat.stat.exists
   tags: [monad, install]
 
 - name: Update apt cache
   apt:
     update_cache: yes
-  when: apt_repo.changed | default(false)
+  when: (apt_repo.changed | default(false)) or (cat_labs_key.changed | default(false))
   tags: [monad, install]
 
 # =============================================================================
