@@ -1,5 +1,18 @@
 ---
-- name: Install Docker
+# Detect any existing Docker installation. Hosts that already deployed the
+# FastLane sidecar have docker-ce from docker.com (with containerd.io and
+# docker-compose-plugin). Trying to apt-install Ubuntu's docker.io on top
+# of that fails because containerd.io conflicts with containerd. So: if a
+# working `docker compose` is already present, only ensure python3-docker
+# (Ansible's community.docker dependency) and skip the engine install.
+- name: Check for existing Docker + compose
+  ansible.builtin.command: docker compose version
+  register: docker_compose_check
+  changed_when: false
+  failed_when: false
+  tags: [observability, docker]
+
+- name: Install Docker engine + compose v2 (only if not already present)
   ansible.builtin.apt:
     name:
       - docker.io
@@ -7,6 +20,15 @@
       - python3-docker
     state: present
     update_cache: true
+  when: docker_compose_check.rc != 0
+  tags: [observability, docker]
+
+- name: Install python3-docker for Ansible's compose module (existing Docker present)
+  ansible.builtin.apt:
+    name: python3-docker
+    state: present
+    update_cache: true
+  when: docker_compose_check.rc == 0
   tags: [observability, docker]
 
 - name: Enable Docker service
