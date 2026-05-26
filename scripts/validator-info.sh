@@ -147,7 +147,12 @@ obs_exists=""
 obs_badge=""
 if [ -f /home/monad/observability/docker-compose.yml ]; then
     obs_exists="yes"
-    obs_up=$(docker ps --filter "label=com.docker.compose.project=observability" \
+    # Pin DOCKER_HOST: the script sets HOME=/home/monad earlier for log access,
+    # which makes the docker CLI read monad's rootless docker config (used by
+    # the fastlane sidecar) instead of the system socket. Observability runs
+    # under root's system docker, so target /var/run/docker.sock explicitly.
+    obs_up=$(DOCKER_HOST=unix:///var/run/docker.sock \
+             docker ps --filter "label=com.docker.compose.project=observability" \
                        --filter "status=running" --format '{{.Names}}' 2>/dev/null | wc -l)
     if [ "$obs_up" -ge 3 ]; then
         obs_badge="${G}●${N}"
