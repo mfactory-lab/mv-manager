@@ -24,6 +24,7 @@ Deploy Monad validators in minutes, not hours. Ansible automation for the entire
 - Python 3.10+
 - `jq` (for Makefile helper scripts)
 - SSH key access to target server (root or sudo user)
+- [Foundry](https://getfoundry.sh) `cast` or Python `eth_account` (only for `make bootstrap` wallet generation)
 
 ## Quick Start
 
@@ -55,6 +56,9 @@ make snapshot
 
 # Monitor sync progress
 make status
+
+# Once synced — register on-chain (requires 100k+ MON)
+make register
 ```
 
 ## Configuration
@@ -88,6 +92,12 @@ make vault-encrypt          # ENV=testnet by default
 make vault-encrypt ENV=mainnet
 ```
 
+**Per-host vaults** — `make bootstrap NAME=my-node-testnet` generates fresh IKM, a wallet, and a keystore password into `inventory/host_vars/<name>/vault.yml`, and prints the inventory snippet to add. Host vars override the network vault, so each validator keeps its own keys. The file is written in plaintext — encrypt it once the wallet is funded:
+
+```bash
+ansible-vault encrypt inventory/host_vars/my-node-testnet/vault.yml
+```
+
 ### Inventory (`inventory/<env>.yml`)
 
 Create one per network (gitignored — contains server IPs):
@@ -105,9 +115,9 @@ all:
             my-validator:
               ansible_host: "1.2.3.4"
               type: validator
-              validator_id: 123
               setup_triedb: true
-              register_validator: false
+              register_validator: false  # flip to true when ready to stake
+              validator_id: 123          # on-chain ID — known after registration
 
         fullnodes:
           hosts: {}
@@ -139,21 +149,21 @@ make restart NODE=validator-02
 
 ## How It Works
 
-`make deploy` runs the full deployment pipeline through these Ansible roles:
+`make deploy` runs the deployment pipeline through these Ansible roles, in order:
 
 ```
 common          → Preflight checks, firewall (UFW), fail2ban, sudoers
 prepare_server  → System packages, kernel tuning, hugepages, TrieDB disk
 monad-node      → Install monad apt package, node.toml config, systemd service,
-                  cruft compat symlinks (ledger/config under monad-bft/)
-execution       → Execution layer, statesync socket
-rpc             → JSON-RPC server (optional)
-validator       → Staking CLI, key generation, registration scripts
-fastlane        → MEV sidecar in rootless Docker + socket watcher (opt-in)
+                  monad-cruft compat symlinks (ledger/config under monad-bft/)
+validator       → Staking CLI, key generation, registration scripts (validators group only)
 monitoring      → Health check scripts, alert thresholds
 backup          → Automated backup scripts (daily, 7-day retention)
 observability   → Prometheus, Grafana, OTEL collector, custom exporter (opt-in)
+fastlane        → MEV sidecar in rootless Docker + socket watcher (opt-in)
 ```
+
+The execution layer and JSON-RPC server are not part of `make deploy` — run them separately with `make execution` and `make rpc` after the initial deploy.
 
 Each role can run independently using tags:
 
@@ -172,13 +182,13 @@ snapshot.yml             → Apply chain snapshot
 register-validator.yml   → On-chain validator registration
 upgrade-node.yml         → Rolling monad package upgrade (serial: 1)
 migrate-validator.yml    → Fast migrate validator to new server
-maintenance.yml          → restart/stop/start/backup/health (tag-driven)
+maintenance.yml          → restart/stop/start/backup/health/auto-compound (tag-driven)
 recovery.yml             → Diagnostics + repair (tag-driven)
 ```
 
 ## Commands
 
-Run `make help` to see all available commands. All commands support `ENV=testnet|mainnet` and `NODE=<name>` to target a specific network or host.
+Run `make help` to see all available commands. All commands support `ENV=testnet|mainnet` (default `testnet`) and `NODE=<name>` to target a specific network or host. Playbook-backed commands also accept `DRYRUN=1` for an Ansible `--check --diff` dry run. Destructive targets — `upgrade`, `stop`, `recovery` — refuse to run without `CONFIRM=yes`.
 
 ### Deployment
 
@@ -204,7 +214,7 @@ make sidecar-health              # Check FastLane sidecar /health endpoint
 make panic-check                 # Scan recent consensus journals for panic patterns
 make logs                        # Tail logs (SVC=consensus|execution|rpc LINES=50)
 make watch                       # Stream logs with color (SVC=consensus|execution|rpc)
-make grafana                     # Open Grafana via SSH tunnel
+make grafana                     # Open Grafana via SSH tunnel (local PORT=3030)
 ```
 
 ### Operations
@@ -218,14 +228,14 @@ make backup-keys                 # Download validator keystores to secrets/
 make commission RATE=20          # Set commission rate
 make claim                       # Claim validator rewards
 make compound                    # Claim + restake rewards
-make auto-compound               # Enable nightly auto-compound timer
+make auto-compound               # Enable daily compound timer (SCHEDULE="*-*-* 08:00:00")
 ```
 
 ### Recovery
 
 ```bash
-make recovery            # Run full recovery playbook
-make diagnose            # Show diagnostic info (disk, memory, services)
+make recovery CONFIRM=yes    # Run full recovery playbook (destructive)
+make diagnose                # Show diagnostic info (disk, memory, services)
 ```
 
 ### Utilities
@@ -316,6 +326,8 @@ An optional monitoring stack that runs alongside the validator node:
 make observability       # Deploy the stack
 make grafana             # Open Grafana via SSH tunnel
 ```
+
+Grafana login is `admin` / `vault_grafana_admin_password` (defaults to `admin` — set it in your vault).
 
 **What's included:**
 - **Grafana** dashboard with validator health, staking, MEV, consensus stats, system resources
@@ -420,7 +432,7 @@ make diagnose                # Check disk partitions
 
 **Recovery from crash**
 ```bash
-make recovery                # Full recovery: check services, repair data, restart
+make recovery CONFIRM=yes    # Full recovery: check services, repair data, restart
 ```
 
 **FastLane sidecar shows yellow in `make status` (stale `/health`)**
