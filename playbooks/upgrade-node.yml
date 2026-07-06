@@ -23,11 +23,30 @@
         dest: /etc/apt/keyrings/category-labs.gpg
         mode: '0644'
 
+    - name: Refresh monad-status script
+      get_url:
+        url: "{{ monad_status_url }}"
+        dest: /usr/local/bin/monad-status
+        mode: '0755'
+        force: yes
+
     - name: Check installed monad version
       command: dpkg-query -W -f='${Version}' monad
       register: installed_version
       changed_when: false
       failed_when: false
+
+    - name: Check triedb migration marker
+      stat:
+        path: "{{ monad_home }}/.triedb-migrated-{{ monad_version }}"
+      register: triedb_migration_marker
+
+    - name: Determine if triedb migration is needed
+      set_fact:
+        migration_needed: >-
+          {{ (triedb_migration_version | default('') | length > 0)
+             and (monad_version == triedb_migration_version)
+             and not triedb_migration_marker.stat.exists }}
 
     - name: Skip if already at target version
       block:
@@ -37,6 +56,7 @@
       when:
         - installed_version.rc == 0
         - installed_version.stdout == monad_version
+        - not (migration_needed | bool)
         - not (force_upgrade | default(false) | bool)
 
     - name: Check key dir exists before backup
@@ -91,6 +111,39 @@
         - stop_result is failed
         - "'Could not find the requested service' not in (stop_result.msg | default(''))"
       register: stop_result
+
+    - name: TrieDB migration (hardfork; runs once while services are stopped)
+      when:
+        - migration_needed | bool
+        - not ansible_check_mode
+      block:
+        - name: Assert no process holds triedb open before migration
+          shell: |
+            if command -v fuser >/dev/null 2>&1; then
+              fuser {{ triedb_config.path }} 2>/dev/null && exit 1 || exit 0
+            else
+              lsof {{ triedb_config.path }} 2>/dev/null && exit 1 || exit 0
+            fi
+          register: triedb_holders_pre_migration
+          changed_when: false
+          failed_when: triedb_holders_pre_migration.rc != 0
+
+        - name: Run triedb metadata migration
+          command: "monad-mpt --storage {{ triedb_config.path }} --upgrade"
+          register: triedb_migration_result
+          failed_when: triedb_migration_result.rc != 0
+
+        - name: Show migration output
+          debug:
+            var: triedb_migration_result.stdout_lines
+
+        - name: Write migration marker
+          copy:
+            dest: "{{ monad_home }}/.triedb-migrated-{{ monad_version }}"
+            content: "migrated to {{ monad_version }} at {{ ansible_date_time.iso8601 }}\n"
+            owner: "{{ monad_user }}"
+            group: "{{ monad_group }}"
+            mode: '0644'
 
     - name: Reset failed state and restart counter before liveness gate
       command: "systemctl reset-failed {{ service_identifier }}"
@@ -157,3 +210,28 @@
       when:
         - panic_scan is not skipped
         - panic_scan.stdout | default('') | trim | length > 0
+
+    - name: Post-upgrade verification (skipped in --check)
+      when: not ansible_check_mode
+      block:
+        - name: Verify running monad-rpc version matches target
+          command: monad-rpc -V
+          register: monad_rpc_version
+          changed_when: false
+          failed_when: ("v" ~ monad_version) not in (monad_rpc_version.stdout ~ monad_rpc_version.stderr)
+
+        - name: Fork-readiness reminder
+          debug:
+            msg:
+              - "Running: {{ (monad_rpc_version.stdout ~ monad_rpc_version.stderr) | trim }}"
+              - "Node must be healthy on v{{ monad_version }} before round {{ testnet_hardfork_round | default('N/A') }} (testnet hardfork)."
+
+        - name: Collect node status (monad-status)
+          command: monad-status
+          register: monad_status_out
+          changed_when: false
+          failed_when: false
+
+        - name: Show node status
+          debug:
+            var: monad_status_out.stdout_lines
