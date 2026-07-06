@@ -61,6 +61,11 @@ monad_bft_repo: "https://github.com/monad-developers/monad-bft.git"
 monad_bft_version: "main"
 monad_source_url: "https://pkg.category.xyz"
 
+# Set per-env to the version whose upgrade requires a one-time triedb
+# metadata migration (monad-mpt --upgrade). Empty = no migration.
+triedb_migration_version: ""
+monad_status_url: "https://bucket.monadinfra.com/scripts/monad-status.sh"
+
 # Staking CLI for validator registration
 staking_cli_repo: "https://github.com/monad-developers/staking-sdk-cli.git"
 staking_cli_version: "main"
