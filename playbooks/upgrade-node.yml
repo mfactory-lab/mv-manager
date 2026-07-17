@@ -224,7 +224,7 @@
           debug:
             msg:
               - "Running: {{ (monad_rpc_version.stdout ~ monad_rpc_version.stderr) | trim }}"
-              - "Node must be healthy on v{{ monad_version }} before round {{ testnet_hardfork_round | default('N/A') }} (testnet hardfork)."
+              - "Node must be healthy on v{{ monad_version }} before round {{ hardfork_round | default('N/A') }} ({{ monad_network_name }} hardfork)."
 
         - name: Collect node status (monad-status)
           command: monad-status
