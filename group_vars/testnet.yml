@@ -2,8 +2,8 @@
 # Testnet-specific configuration
 monad_chain_id: 10143
 monad_network_name: "testnet"
-monad_version: "0.15.0"
-triedb_migration_version: "0.15.0"
+monad_version: "0.15.2"
+triedb_migration_version: "0.15.2"
 hardfork_round: 43821000
 monad_snapshot_url: "https://d1v5yevi7k4blc.cloudfront.net"
 monad_validators_config_url: "https://bucket.monadinfra.com/validators/testnet/validators.toml"
