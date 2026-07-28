@@ -1,0 +1,151 @@
+---
+# MIP-8 Phase A — activate the page-encoded secondary timeline and seed it from
+# the slot-encoded primary. After this the node dual-writes to both timelines
+# until the Phase B hardfork flips the canonical state root.
+#
+# Only run when your validator cohort has been announced by Monad Foundation.
+#
+# Rollback (pre-fork, no data loss): stop services, then
+#   monad-mpt --storage /dev/triedb --deactivate-secondary
+- name: MIP-8 Phase A page migration
+  hosts: validators:fullnodes
+  become: yes
+  gather_facts: yes
+  serial: 1
+  any_errors_fatal: true
+
+  vars_files:
+    - ../group_vars/all.yml
+    - ../group_vars/vault-{{ env }}.yml
+    - ../group_vars/{{ env }}.yml
+
+  vars:
+    page_snapshot_dir: "{{ monad_home }}/snapshots/page-migration"
+    page_migration_marker: "{{ monad_home }}/.page-migrated"
+
+  tasks:
+    - name: Check page migration marker
+      stat:
+        path: "{{ page_migration_marker }}"
+      register: page_marker
+
+    # Step 4 below tears down any existing secondary, so a re-run without this
+    # guard would discard a populated page timeline and rebuild it from scratch.
+    - name: Skip if already migrated
+      block:
+        - debug:
+            msg: "page migration already applied, skipping"
+        - meta: end_host
+      when:
+        - page_marker.stat.exists
+        - not (force_page_migration | default(false) | bool)
+
+    - name: Stop services
+      systemd:
+        name: "{{ item }}"
+        state: stopped
+      loop:
+        - "{{ rpc_service_identifier }}"
+        - "{{ service_identifier }}"
+        - "{{ execution_service_identifier }}"
+
+    - name: Page migration (skipped in --check)
+      when: not ansible_check_mode
+      block:
+        - name: Reset snapshot staging directory
+          file:
+            path: "{{ page_snapshot_dir }}"
+            state: "{{ item }}"
+            owner: "{{ monad_user }}"
+            group: "{{ monad_group }}"
+            mode: '0755'
+          loop: [absent, directory]
+
+        - name: Clear any partial secondary timeline
+          command: "monad-mpt --storage {{ triedb_config.path }} --deactivate-secondary"
+          register: deactivate_result
+          changed_when: false
+          failed_when: false
+
+        # The MONAD007->MONAD008 migration shipped in v0.15.0 zero-filled the
+        # inactive secondary ring's cnv_chunks[] instead of writing the empty
+        # sentinel. Activating on top of that wipes the metadata, so normalise
+        # first. Harmless on databases that were never affected.
+        - name: Repair secondary ring metadata
+          command: "monad-mpt --storage {{ triedb_config.path }} --repair"
+
+        - name: Activate page secondary timeline
+          command: "monad-mpt --storage {{ triedb_config.path }} --activate-secondary --state-machine monad"
+          register: activate_result
+          failed_when: "'Activated secondary timeline' not in (activate_result.stdout ~ activate_result.stderr)"
+
+        # monad-cli opens 8 files per shard; root's soft nofile is 1024 and each
+        # Ansible task gets a fresh shell, so the raise must share this shell.
+        - name: Dump binary snapshot from primary
+          shell: >
+            ulimit -n 65536 &&
+            monad-cli --db {{ triedb_config.path }} --version latest_finalized
+            --dump-binary-snapshot {{ page_snapshot_dir }}
+          register: dump_result
+          failed_when: "'success=true' not in (dump_result.stdout ~ dump_result.stderr)"
+
+        - name: Load binary snapshot into page secondary
+          shell: >
+            ulimit -n 65536 &&
+            monad-cli --db {{ triedb_config.path }} --version latest_finalized
+            --load-binary-snapshot {{ page_snapshot_dir }} --secondary
+          register: load_result
+          failed_when: "'load_to_secondary=true' not in (load_result.stdout ~ load_result.stderr)"
+
+        - name: Remove snapshot staging directory
+          file:
+            path: "{{ page_snapshot_dir }}"
+            state: absent
+
+        - name: Read back timeline state
+          command: "monad-mpt --storage {{ triedb_config.path }}"
+          register: mpt_state
+          changed_when: false
+
+        - name: Show timeline state
+          debug:
+            var: mpt_state.stdout_lines
+
+        - name: Verify both timelines are stamped
+          assert:
+            that:
+              - "'State machine kind: ethereum' in mpt_state.stdout"
+              - "'State machine kind: monad' in mpt_state.stdout"
+            fail_msg: "secondary timeline missing or unstamped after migration"
+
+    - name: Start services
+      systemd:
+        name: "{{ item }}"
+        state: started
+        enabled: yes
+      loop:
+        - "{{ execution_service_identifier }}"
+        - "{{ service_identifier }}"
+        - "{{ rpc_service_identifier }}"
+
+    - name: Wait for RPC
+      uri:
+        url: "http://localhost:{{ monad_rpc_port }}"
+        method: POST
+        body: '{"jsonrpc":"2.0","method":"eth_chainId","id":1}'
+        body_format: json
+        headers:
+          Content-Type: "application/json"
+      register: rpc_check
+      until: rpc_check.status == 200
+      retries: 30
+      delay: 10
+
+    - name: Write page migration marker
+      copy:
+        dest: "{{ page_migration_marker }}"
+        content: "page secondary activated at {{ ansible_date_time.iso8601 }}\n"
+        owner: "{{ monad_user }}"
+        group: "{{ monad_group }}"
+        mode: '0644'
+      when: not ansible_check_mode

@@ -181,6 +181,7 @@ setup-observability.yml  → Just the observability stack
 snapshot.yml             → Apply chain snapshot
 register-validator.yml   → On-chain validator registration
 upgrade-node.yml         → Rolling monad package upgrade (serial: 1)
+page-migration.yml       → MIP-8 Phase A dual-DB page migration (serial: 1)
 migrate-validator.yml    → Fast migrate validator to new server
 maintenance.yml          → restart/stop/start/backup/health/auto-compound (tag-driven)
 recovery.yml             → Diagnostics + repair (tag-driven)
@@ -188,7 +189,7 @@ recovery.yml             → Diagnostics + repair (tag-driven)
 
 ## Commands
 
-Run `make help` to see all available commands. All commands support `ENV=testnet|mainnet` (default `testnet`) and `NODE=<name>` to target a specific network or host. Playbook-backed commands also accept `DRYRUN=1` for an Ansible `--check --diff` dry run. Destructive targets — `upgrade`, `stop`, `recovery` — refuse to run without `CONFIRM=yes`.
+Run `make help` to see all available commands. All commands support `ENV=testnet|mainnet` (default `testnet`) and `NODE=<name>` to target a specific network or host. Playbook-backed commands also accept `DRYRUN=1` for an Ansible `--check --diff` dry run. Destructive targets — `upgrade`, `page-migrate`, `stop`, `recovery` — refuse to run without `CONFIRM=yes`.
 
 ### Deployment
 
