@@ -1,0 +1,121 @@
+---
+# MIP-8 Phase C — promote the page timeline to primary and drop the legacy
+# slot timeline, returning its chunks to the primary ring.
+#
+# Only run after the MIP-8 hardfork timestamp has passed and your validator
+# cohort has been announced by Monad Foundation.
+#
+# Not for archive nodes (they keep the slot timeline) or nodes hard reset after
+# the fork (already page-only). There is no undo: the slot timeline is destroyed.
+- name: MIP-8 Phase C slot decommission
+  hosts: validators:fullnodes
+  become: yes
+  gather_facts: yes
+  serial: 1
+  any_errors_fatal: true
+
+  vars_files:
+    - ../group_vars/all.yml
+    - ../group_vars/vault-{{ env }}.yml
+    - ../group_vars/{{ env }}.yml
+
+  vars:
+    page_decommission_marker: "{{ monad_home }}/.page-decommissioned"
+
+  tasks:
+    - name: Check decommission marker
+      stat:
+        path: "{{ page_decommission_marker }}"
+      register: decommission_marker
+
+    - name: Skip if already decommissioned
+      block:
+        - debug:
+            msg: "slot timeline already decommissioned, skipping"
+        - meta: end_host
+      when:
+        - decommission_marker.stat.exists
+        - not (force_page_decommission | default(false) | bool)
+
+    # Read-only, so it runs against live services and aborts before any downtime.
+    - name: Read timeline state
+      command: "monad-mpt --storage {{ triedb_config.path }}"
+      register: mpt_before
+      changed_when: false
+      check_mode: no
+
+    - name: Require dual timelines before decommission
+      assert:
+        that:
+          - "'State machine kind: ethereum' in mpt_before.stdout"
+          - "'State machine kind: monad' in mpt_before.stdout"
+        fail_msg: >-
+          expected Primary ethereum + Secondary monad, got:
+          {{ mpt_before.stdout }}
+
+    - name: Stop services
+      systemd:
+        name: "{{ item }}"
+        state: stopped
+      loop:
+        - "{{ rpc_service_identifier }}"
+        - "{{ service_identifier }}"
+        - "{{ execution_service_identifier }}"
+
+    - name: Slot decommission (skipped in --check)
+      when: not ansible_check_mode
+      block:
+        - name: Promote page timeline to primary
+          command: "monad-mpt --storage {{ triedb_config.path }} --promote-secondary"
+
+        - name: Deactivate slot timeline
+          command: "monad-mpt --storage {{ triedb_config.path }} --deactivate-secondary"
+
+        - name: Read back timeline state
+          command: "monad-mpt --storage {{ triedb_config.path }}"
+          register: mpt_after
+          changed_when: false
+
+        - name: Show timeline state
+          debug:
+            var: mpt_after.stdout_lines
+
+        - name: Verify only the page timeline remains
+          assert:
+            that:
+              - "'State machine kind: monad' in mpt_after.stdout"
+              - "'State machine kind: ethereum' not in mpt_after.stdout"
+              - "'Secondary:' not in mpt_after.stdout"
+            fail_msg: "slot timeline still present after decommission"
+
+    - name: Start services
+      systemd:
+        name: "{{ item }}"
+        state: started
+        enabled: yes
+      loop:
+        - "{{ execution_service_identifier }}"
+        - "{{ service_identifier }}"
+        - "{{ rpc_service_identifier }}"
+
+    - name: Wait for RPC
+      uri:
+        url: "http://localhost:{{ monad_rpc_port }}"
+        method: POST
+        body: '{"jsonrpc":"2.0","method":"eth_chainId","id":1}'
+        body_format: json
+        headers:
+          Content-Type: "application/json"
+      register: rpc_check
+      until: rpc_check.status == 200
+      retries: 30
+      delay: 10
+
+    - name: Write decommission marker
+      copy:
+        dest: "{{ page_decommission_marker }}"
+        content: "slot timeline decommissioned at {{ ansible_date_time.iso8601 }}\n"
+        owner: "{{ monad_user }}"
+        group: "{{ monad_group }}"
+        mode: '0644'
+      when: not ansible_check_mode

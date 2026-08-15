@@ -65,6 +65,10 @@ page-migrate: ## MIP-8 Phase A dual-DB page migration (destructive; requires CON
 	$(call confirm)
 	ansible-playbook $(A) $(DR) playbooks/page-migration.yml
 
+page-decommission: ## MIP-8 Phase C slot decommission (destructive; requires CONFIRM=yes)
+	$(call confirm)
+	ansible-playbook $(A) $(DR) playbooks/page-decommission.yml
+
 observability: ## Deploy observability stack (Prometheus + Grafana)
 	ansible-playbook $(A) $(DR) playbooks/setup-observability.yml
 
@@ -227,11 +231,11 @@ help:
 	@echo ""
 	@echo "  ENV defaults to 'testnet', uses inventory/\$$ENV.yml"
 	@echo "  DRYRUN=1 passes --check --diff to ansible-playbook"
-	@echo "  CONFIRM=yes required for destructive targets: upgrade, page-migrate, stop, recovery"
+	@echo "  CONFIRM=yes required for destructive targets: upgrade, page-migrate, page-decommission, stop, recovery"
 	@echo ""
 	@awk '/^## /{sub(/^## /,""); printf "\n\033[1m%s\033[0m\n", $$0; next} \
 		/^[a-z-]+:.*##/{split($$0,a,":.*## "); printf "  \033[36m%-12s\033[0m %s\n", a[1], a[2]}' $(MAKEFILE_LIST)
 	@echo ""
 
 .DEFAULT_GOAL := help
-.PHONY: bootstrap deploy snapshot execution rpc register upgrade page-migrate observability fastlane sidecar-health status health panic-check logs watch restart stop start commission claim compound auto-compound backup-config backup-keys migrate recovery diagnose ping grafana hardware speedtest ssh check vault-edit vault-encrypt vault-decrypt help
+.PHONY: bootstrap deploy snapshot execution rpc register upgrade page-migrate page-decommission observability fastlane sidecar-health status health panic-check logs watch restart stop start commission claim compound auto-compound backup-config backup-keys migrate recovery diagnose ping grafana hardware speedtest ssh check vault-edit vault-encrypt vault-decrypt help
