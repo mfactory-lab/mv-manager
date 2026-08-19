@@ -2,7 +2,8 @@
 # Mainnet-specific configuration
 monad_chain_id: 143
 monad_network_name: "mainnet"
-monad_version: "0.15.1"
+monad_version: "0.15.2"
+# stays 0.15.1: v0.15.2 ships no monad-mpt --upgrade step (already at MONAD008)
 triedb_migration_version: "0.15.1"
 hardfork_round: 89758000
 monad_snapshot_url: "https://d3b0ffqjb9bqrg.cloudfront.net"
