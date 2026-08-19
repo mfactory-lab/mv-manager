@@ -174,7 +174,9 @@
     - name: Generate name record signature
       shell: |
         /usr/local/bin/monad-sign-name-record \
-          --address {{ ansible_host }}:{{ monad_p2p_port }} \
+          --ip {{ ansible_host }} \
+          --tcp-port {{ monad_p2p_port }} \
+          --udp-port {{ monad_p2p_port }} \
           --authenticated-udp-port {{ monad[type].consensus.ports.auth_udp_port }} \
           --self-record-seq-num {{ self_record_seq_num | default(1) }} \
           --keystore-path {{ monad_secp_key_file }} \

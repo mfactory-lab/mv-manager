@@ -193,11 +193,16 @@
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
+# v0.15.2 replaced `--address ip:port` with --ip/--tcp-port/--udp-port. --udp-port must
+# repeat the TCP port: the old flag set both, and the signature covers them. Verified on
+# pg-testnet — the new form reproduces the live node.toml signature byte for byte.
 - name: Generate name record signature
   shell: |
     set -o pipefail
     /usr/local/bin/monad-sign-name-record \
-      --address {{ ansible_host }}:{{ monad_p2p_port }} \
+      --ip {{ ansible_host }} \
+      --tcp-port {{ monad_p2p_port }} \
+      --udp-port {{ monad_p2p_port }} \
       --authenticated-udp-port {{ monad[type].consensus.ports.auth_udp_port }} \
       --self-record-seq-num {{ self_record_seq_num | default(1) }} \
       --keystore-path {{ monad_secp_key_file }} \
